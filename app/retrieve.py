@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import jieba
@@ -57,6 +58,20 @@ class MilvusLiteBackend:
 
 _BACKENDS = {"numpy": NumpyBackend, "milvus_lite": MilvusLiteBackend}
 
+# 标识符型 token：字母数字 + 至少一个连字符段（EQ-JN-001、PF-2026-LW-001、
+# EQP-2026-YC01、DXDK-40VI）。要求连字符段，避免把普通英文单词误判为编号。
+_IDENTIFIER_RE = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+")
+
+
+def extract_identifiers(query: str) -> list[str]:
+    """从查询中抽取标识符 token（统一大写、去重、保序）。"""
+    out: list[str] = []
+    for m in _IDENTIFIER_RE.finditer(query):
+        tok = m.group(0).upper()
+        if tok not in out:
+            out.append(tok)
+    return out
+
 
 def _tokenize(text: str) -> list[str]:
     return [t for t in jieba.lcut(normalize_text(text)) if t.strip()]
@@ -70,6 +85,24 @@ class Retriever:
         self.vector = _BACKENDS[backend](index_dir)
         self.bm25 = BM25Okapi([_tokenize(c["text"]) for c in self.chunks])
         self.graph = load_or_build(index_dir)   # 图谱通道：缺 kg.json 时现场重建
+        # 精确通道用大写原文做大小写无关子串匹配（用户可能小写输入 dj-300）
+        self._upper_texts = [c["text"].upper() for c in self.chunks]
+
+    def _exact_channel(self, query: str, per_channel: int) -> list[tuple[int, float]]:
+        """按需精确通道（问题二修复 B+C′）：仅当查询含标识符 token 时启动，
+        对原文做子串匹配——绕过 jieba 切碎连字符编号、embedding 对罕见编号
+        不敏感两个根因。纯语义查询零开销（通道不启动）。
+        实测 351 块全扫 0.03ms；企业百万块级的演进路径是 SQLite FTS5
+        trigram 索引（stdlib 零新依赖），通道接口不变。"""
+        tokens = extract_identifiers(query)
+        if not tokens:
+            return []
+        scored = [(i, sum(1 for t in tokens if t in utext))
+                  for i, utext in enumerate(self._upper_texts)]
+        scored = [s for s in scored if s[1] > 0]
+        # 命中标识符多者在前（全命中 > 部分命中），同数按语料顺序稳定输出
+        scored.sort(key=lambda kv: (-kv[1], kv[0]))
+        return [(i, float(n)) for i, n in scored[:per_channel]]
 
     def search(self, query: str, top_k: int = 5, per_channel: int = 10,
                rerank: bool = True) -> KnowledgePack:
@@ -78,8 +111,9 @@ class Retriever:
         bm25_idx = np.argsort(bm25_scores)[::-1][:per_channel]
         bm25_hits = [(int(i), float(bm25_scores[i])) for i in bm25_idx]
         graph_hits = graph_recall(self.graph, query, per_channel)
+        exact_hits = self._exact_channel(query, per_channel)
 
-        # RRF：score = Σ 1/(k + rank)，只认排名不认原始分——三路量纲天然不可比
+        # RRF：score = Σ 1/(k + rank)，只认排名不认原始分——多路量纲天然不可比
         rrf: dict[int, float] = {}
         channels: dict[int, list[str]] = {}
         for rank, (idx, _) in enumerate(vec_hits):
@@ -91,6 +125,9 @@ class Retriever:
         for rank, (idx, _) in enumerate(graph_hits):
             rrf[idx] = rrf.get(idx, 0.0) + 1.0 / (C.RRF_K + rank + 1)
             channels.setdefault(idx, []).append("graph")
+        for rank, (idx, _) in enumerate(exact_hits):
+            rrf[idx] = rrf.get(idx, 0.0) + 1.0 / (C.RRF_K + rank + 1)
+            channels.setdefault(idx, []).append("exact")
 
         # D13 复核结论：不加产品名加成。实测表明表格感知抽取已让"金银花涨价"
         # 类查询 Top1 命中配方变更记录（泛文档自然下沉）；而产品名加成会把

@@ -102,3 +102,43 @@ def test_hyphen_line_merge():
     maint = next(c for c in chunks if "维修历史" in c["section"])
     assert "2026-03" in maint["text"], f"日期仍碎裂: {maint['text'][:200]}"
     assert "NJP-3200" in maint["text"]
+
+
+# ---------- 问题二修复：按需精确通道（B+C′） ----------
+
+def test_extract_identifiers():
+    """标识符抽取：编号形态被认出，普通中文/英文词不误判。"""
+    from app.retrieve import extract_identifiers
+    assert extract_identifiers("ZQ-TEST-2026 的成本异常") == ["ZQ-TEST-2026"]
+    assert extract_identifiers("EQ-JN-001 和 PF-2026-LW-001 有什么关系") == \
+        ["EQ-JN-001", "PF-2026-LW-001"]
+    assert extract_identifiers("金银花价格上涨的原因") == []
+    # 大小写归一：小写输入识别为大写 token
+    assert extract_identifiers("dj-300 粉碎机") == ["DJ-300"]
+
+
+def test_identifier_query_exact_channel(retriever):
+    """编号查询：Top1 必须是含该编号的块，且带 exact 通道标。"""
+    pack = retriever.search("PF-2026-LW-001 批次发生了什么", top_k=5)
+    assert "PF-2026-LW-001" in pack.hits[0].text
+    assert "exact" in pack.hits[0].channels
+
+
+def test_identifier_case_insensitive(retriever):
+    """用户小写输入编号也能命中（大小写无关子串匹配）。"""
+    pack = retriever.search("dj-300 在哪个车间", top_k=5)
+    assert any("DJ-300" in h.text for h in pack.hits)
+
+
+def test_semantic_query_no_exact_channel(retriever):
+    """语义查询零影响：无标识符时 exact 通道不启动，排序行为不变。"""
+    pack = retriever.search("金银花价格上涨的原因", top_k=5)
+    for h in pack.hits:
+        assert "exact" not in h.channels
+
+
+def test_nonexistent_identifier_graceful(retriever):
+    """编号在库中不存在：不崩、不阻塞其他通道，只是没有 exact 命中。"""
+    pack = retriever.search("ZQ-TEST-2099 的成本是多少", top_k=5)
+    assert pack.hits  # 其他通道照常返回
+    assert all("exact" not in h.channels for h in pack.hits)
