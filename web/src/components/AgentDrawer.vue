@@ -8,7 +8,10 @@
           <div class="d-title">Agent 助手</div>
           <div class="d-ctx">上下文：{{ store.product }} · {{ store.month }}（自动注入）</div>
         </div>
-        <button class="d-close" title="关闭" @click="emit('close')">✕</button>
+        <div class="d-head-btns">
+          <button v-if="messages.length" class="d-clear" title="清空本地对话记录" @click="clearAll">清空</button>
+          <button class="d-close" title="关闭" @click="emit('close')">✕</button>
+        </div>
       </header>
 
       <!-- V5 决策卡片流：系统自主判断建议，确认按钮嵌对话 -->
@@ -26,8 +29,12 @@
           试着问我：「生成 2026-05 的月度报告」「银黄口服液对标二厂差多少」「下发整改任务」
         </div>
         <template v-for="(m, i) in messages" :key="i">
-          <div v-if="m.role === 'user'" class="bubble user">{{ m.text }}</div>
+          <div v-if="m.role === 'user'" class="bubble user">
+            <span v-if="needCtxTag(m.ctx, store.product, store.month)" class="ctx-tag">{{ m.ctx.product }}·{{ m.ctx.month }}</span>
+            {{ m.text }}
+          </div>
           <div v-else class="bubble agent">
+            <span v-if="needCtxTag(m.ctx, store.product, store.month)" class="ctx-tag">{{ m.ctx.product }}·{{ m.ctx.month }}</span>
             <!-- 四态渲染：场景卡片 / 澄清 / 四入口 / 错误 -->
             <template v-if="m.view.kind === 'card'">
               <div class="r-title">{{ m.view.title }}</div>
@@ -59,20 +66,40 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import { api } from '../api'
-import { buildReplyView, type ReplyView } from '../agentCards'
+import { buildReplyView } from '../agentCards'
+import {
+  clearChat,
+  loadChat,
+  needCtxTag,
+  saveChat,
+  type ChatCtx,
+  type PersistedMsg,
+} from '../chatPersist'
 import { store } from '../store'
 import type { DecisionResp } from '../types'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-interface Msg { role: 'user' | 'agent'; text?: string; view: ReplyView; intent?: string; confidence?: number; layer?: string }
-const messages = ref<Msg[]>([])
+// 消息存档：挂载即恢复本机上次会话（localStorage，最多 50 条，隐私模式静默降级）
+type Msg = PersistedMsg
+const messages = ref<Msg[]>(loadChat())
 const draft = ref('')
 const sending = ref(false)
 const msgBox = ref<HTMLElement | null>(null)
 
+// 任何 push（用户/回复/错误/决策回执）都即时落盘；失败静默，不打断对话
+watch(messages, (list) => saveChat(list), { deep: true })
+
+const curCtx = (): ChatCtx => ({ product: store.product, month: store.month })
+
+function clearAll() {
+  clearChat()
+  messages.value = []
+}
+
 // V5 决策卡片：打开抽屉时按当前上下文取系统建议（规则引擎，永不算数）
+// 决策卡状态不持久化——每次打开重新评估
 const decision = ref<DecisionResp | null>(null)
 const decisionDone = ref(false)
 watch(() => props.open, async (v) => {
@@ -88,6 +115,7 @@ function confirmAttribution() {
   messages.value.push({
     role: 'agent',
     view: { kind: 'card', scene: 'decision', title: '已派发', lines: ['归因生成请求已发送到看板页（如不在看板页，请切换查看）'] },
+    ctx: curCtx(), ts: Date.now(),
   })
 }
 
@@ -95,16 +123,20 @@ async function send(text: string) {
   const t = text.trim()
   if (!t || sending.value) return
   draft.value = ''
-  messages.value.push({ role: 'user', text: t, view: { kind: 'clarify', text: t } })
+  messages.value.push({ role: 'user', text: t, view: { kind: 'clarify', text: t }, ctx: curCtx(), ts: Date.now() })
   sending.value = true
   try {
     const r = await api.chat(t, store.product, store.month)  // 上下文自动注入
     messages.value.push({
       role: 'agent', view: buildReplyView(r),
       intent: r.intent ?? 'none', confidence: r.confidence, layer: r.layer,
+      ctx: curCtx(), ts: Date.now(),
     })
   } catch (e) {
-    messages.value.push({ role: 'agent', view: { kind: 'error', text: e instanceof Error ? e.message : String(e) } })
+    messages.value.push({
+      role: 'agent', view: { kind: 'error', text: e instanceof Error ? e.message : String(e) },
+      ctx: curCtx(), ts: Date.now(),
+    })
   } finally {
     sending.value = false
     await nextTick()
@@ -128,7 +160,20 @@ async function send(text: string) {
 }
 .d-title { font-size: 15px; font-weight: 700; color: var(--text-num); }
 .d-ctx { font-size: 11px; color: var(--text-label); margin-top: 3px; }
+.d-head-btns { display: flex; align-items: center; gap: 10px; }
+.d-clear {
+  border: none; background: none; cursor: pointer;
+  color: var(--text-label); font-size: 11.5px; padding: 2px 0;
+}
+.d-clear:hover { color: var(--bad, #b3543f); }
 .d-close { border: none; background: none; cursor: pointer; color: var(--text-label); font-size: 14px; }
+
+/* 跨上下文消息标签：气泡左上角小灰标（仅在消息上下文≠当前筛选时出现） */
+.ctx-tag {
+  display: block; font-size: 10px; line-height: 1.4; margin-bottom: 3px;
+  color: var(--text-label); opacity: 0.9;
+}
+.bubble.user .ctx-tag { color: rgba(255, 255, 255, 0.72); text-align: right; }
 
 .decision-card {
   margin: 12px 12px 0; padding: 12px 14px; border-radius: 12px;
