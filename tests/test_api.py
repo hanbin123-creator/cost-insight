@@ -153,3 +153,57 @@ def test_kb_upload_and_delete(client, tmp_path, monkeypatch):
 
     r3 = client.delete("/api/kb/documents/不存在.txt")
     assert r3.status_code == 404
+
+
+# ---------- 报告归档端点（F8） ----------
+def test_parse_report_name():
+    from pathlib import Path
+    from app.api import _parse_report_name
+    m = _parse_report_name(Path("银黄口服液_2026-05_月度成本分析报告.docx"))
+    assert m == {"product": "银黄口服液", "period": "2026-05", "theme": "月度"}
+    assert _parse_report_name(Path("银黄口服液_2026-Q2_季度成本分析报告.pdf"))["theme"] == "季度"
+    assert _parse_report_name(Path("_font_check_trend.png")) is None   # 图表临时文件
+    assert _parse_report_name(Path("随便.docx")) is None               # 命名不合规
+
+
+def test_reports_list_and_download(client):
+    r = client.get("/api/reports")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["reports"], "reports/ 目录已有演习产物"
+    first = d["reports"][0]
+    assert {"product", "period", "theme", "docx", "pdf", "mtime"} <= set(first)
+    assert first["product"] in ("银黄口服液", "板蓝根颗粒", "六味地黄胶囊")
+    assert first["docx"] or first["pdf"]
+    mtimes = [g["mtime"] for g in d["reports"]]
+    assert mtimes == sorted(mtimes, reverse=True)      # 倒序归档
+    name = (first["docx"] or first["pdf"])["name"]
+    r2 = client.get(f"/api/reports/{name}")
+    assert r2.status_code == 200 and len(r2.content) > 1000
+
+
+def test_report_download_guards(client):
+    assert client.get("/api/reports/evil.exe").status_code == 422
+    assert client.get("/api/reports/不存在_2099-05_月度成本分析报告.docx").status_code == 404
+    # 路径穿越：解码后只取文件名，config.py 非 docx/pdf → 422
+    assert client.get("/api/reports/..%2F..%2Fapp%2Fconfig.py").status_code in (404, 422)
+
+
+# ---------- 知识库检索透明化端点（F10） ----------
+def test_kb_query(client):
+    r = client.get("/api/kb/query", params={"q": "金银花涨价"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["query"] == "金银花涨价"
+    assert d["hits"], "检索应有命中"
+    h = d["hits"][0]
+    assert {"chunk_id", "doc_name", "page", "section", "doc_type",
+            "channels", "rrf_score", "text"} <= set(h)
+    assert h["channels"], "每个命中须带召回通道标签（vector/bm25/graph）"
+
+
+def test_kb_query_guards(client):
+    assert client.get("/api/kb/query", params={"q": "   "}).status_code == 422
+    # top_k 越界被钳制而非报错
+    r = client.get("/api/kb/query", params={"q": "成本", "top_k": 99})
+    assert r.status_code == 200 and len(r.json()["hits"]) <= 10

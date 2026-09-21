@@ -224,3 +224,61 @@ export interface TrackingResp {
   } | null
   tasks?: RpaTask[]
 }
+
+/** 报告归档条目（/api/reports）：docx/pdf 伴生归组，mtime 服务端已倒序 */
+export interface ReportFile { name: string; size_kb: number }
+
+export interface ReportItem {
+  product: string
+  period: string
+  theme: string
+  docx: ReportFile | null
+  pdf: ReportFile | null
+  mtime: number
+}
+
+export interface ReportsResp {
+  reports: ReportItem[]
+  unknown_files: string[]
+}
+
+/** 报告生成响应（POST /api/report）：数字/表格全部后端算好，warnings 如实呈现 */
+export interface ReportGenResp {
+  docx: string
+  pdf: string | null
+  warnings: string[]
+  verification: Verification
+  theme: string
+  sections_source: Record<string, string>
+}
+
+/** 知识库命中块（/api/kb/query）：通道标签与 RRF 分用于检索透明化展示 */
+export interface KbHit {
+  chunk_id: string
+  doc_name: string
+  page: number | null
+  section: string | null
+  doc_type: string
+  text: string
+  rrf_score: number
+  channels: string[]
+}
+
+export interface KbQueryResp { query: string; hits: KbHit[] }
+
+/** 知识库文档条目（/api/kb/documents） */
+export interface KbDoc {
+  name: string
+  size_kb: number
+  indexed_chunks: number
+  doc_version: string | null
+  indexed: boolean
+}
+
+export interface KbJob { state: string; detail?: string; chunks?: number }
+
+export interface KbDocsResp {
+  documents: KbDoc[]
+  total_chunks: number
+  job: KbJob
+}

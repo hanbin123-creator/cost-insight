@@ -15,6 +15,7 @@ from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
@@ -213,6 +214,61 @@ async def report(req: ReportRequest) -> dict:
         raise HTTPException(404, str(e))
 
 
+# ---------- 报告归档（F8 报告中心：列表 + 下载） ----------
+_REPORTS_DIR = Path(__file__).resolve().parent.parent / "reports"
+_REPORT_SUFFIXES = (".docx", ".pdf")
+
+
+def _parse_report_name(p: Path) -> dict | None:
+    """'银黄口服液_2026-05_月度成本分析报告.docx' → {product, period, theme}；
+    命名不符（如临时文件、图表 png）返回 None，由调用方如实列入 unknown。"""
+    stem = p.name
+    for suffix in ("成本分析报告.docx", "成本分析报告.pdf"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    else:
+        return None
+    parts = stem.rsplit("_", 2)   # 产品名不含下划线（数据包口径），右切两段最稳
+    if len(parts) != 3 or not all(parts):
+        return None
+    return {"product": parts[0], "period": parts[1], "theme": parts[2]}
+
+
+@app.get("/api/reports")
+def report_list() -> dict:
+    """报告归档清单：扫 reports/，docx/pdf 按同 stem 归组，mtime 倒序。
+    解析失败的文件列入 unknown_files 如实暴露，不静默丢弃。"""
+    _REPORTS_DIR.mkdir(exist_ok=True)
+    groups: dict[str, dict] = {}
+    unknown: list[str] = []
+    for p in _REPORTS_DIR.iterdir():
+        if p.suffix.lower() not in _REPORT_SUFFIXES:
+            continue
+        meta = _parse_report_name(p)
+        if meta is None:
+            unknown.append(p.name)
+            continue
+        g = groups.setdefault(p.stem, {**meta, "docx": None, "pdf": None, "mtime": 0.0})
+        g[p.suffix.lower().lstrip(".")] = {
+            "name": p.name, "size_kb": round(p.stat().st_size / 1024, 1)}
+        g["mtime"] = max(g["mtime"], p.stat().st_mtime)
+    items = sorted(groups.values(), key=lambda g: g["mtime"], reverse=True)
+    return {"reports": items, "unknown_files": sorted(unknown)}
+
+
+@app.get("/api/reports/{filename}")
+def report_download(filename: str) -> FileResponse:
+    """报告下载：只认 reports/ 下命名合规的 docx/pdf，路径穿越与改名文件一律拒绝。"""
+    name = Path(filename).name   # 防路径穿越：只取文件名
+    if not name.lower().endswith(_REPORT_SUFFIXES):
+        raise HTTPException(422, "仅允许下载 docx/pdf 报告文件")
+    target = _REPORTS_DIR / name
+    if not target.exists() or _parse_report_name(target) is None:
+        raise HTTPException(404, f"报告不存在: {name}")
+    return FileResponse(target, filename=name)
+
+
 # ---------- 板块⑥ 行动闭环（RPA 整改任务） ----------
 class RectifyDispatchRequest(BaseModel):
     product: str
@@ -311,6 +367,20 @@ def _reindex_job() -> None:
         _KB_JOB.update(state="done", chunks=len(chunks))
     except Exception as e:                  # noqa: BLE001 —— 后台任务须兜底
         _KB_JOB.update(state="failed", detail=f"{type(e).__name__}: {e}")
+
+
+# ---------- 知识库（F10：检索透明化 + 文档管理） ----------
+@app.get("/api/kb/query")
+def kb_query(q: str, top_k: int = 5) -> dict:
+    """知识库检索透明化：三路召回（向量/BM25/图谱）→ RRF 融合 → 规则精排，
+    命中块连同通道标签与 RRF 分一并返回——前端只展示，不做任何计算。"""
+    _init()
+    q = q.strip()
+    if not q:
+        raise HTTPException(422, "q 不能为空")
+    top_k = min(max(top_k, 1), 10)
+    pack = _State.retriever.search(q, top_k=top_k)
+    return {"query": pack.query, "hits": [h.model_dump() for h in pack.hits]}
 
 
 @app.get("/api/kb/documents")

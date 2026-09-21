@@ -52,12 +52,8 @@
         <DashboardView v-if="route.current === 'dashboard'" />
         <BenchmarkView v-else-if="route.current === 'benchmark'" />
         <RectifyView v-else-if="route.current === 'rectify'" />
-        <PlaceholderView v-else-if="route.current === 'reports'" title="报告中心"
-          plan="V3 时间轴归档 ＋ V4 首页最新报告卡（数据：/api/report 月报/季报/专题已就绪）"
-          hint="增量 5 落地。顶部新建报告操作条（类型按钮→参数弹窗→进度→入轴）。" />
-        <PlaceholderView v-else-if="route.current === 'kb'" title="知识库"
-          plan="V4 检索优先（RAG 透明化）＋ V1 文档列表管理（数据：/api/kb/documents 已就绪）"
-          hint="增量 5 落地。检索结果带引用片段与出处文档；上传后后台重建索引。" />
+        <ReportsView v-else-if="route.current === 'reports'" />
+        <KbView v-else-if="route.current === 'kb'" />
       </main>
     </div>
 
@@ -78,7 +74,8 @@ import { initStore, store } from './store'
 import DashboardView from './views/DashboardView.vue'
 import BenchmarkView from './views/BenchmarkView.vue'
 import RectifyView from './views/RectifyView.vue'
-import PlaceholderView from './components/PlaceholderView.vue'
+import ReportsView from './views/ReportsView.vue'
+import KbView from './views/KbView.vue'
 import AgentDrawer from './components/AgentDrawer.vue'
 
 const route = useRoute()

@@ -8,6 +8,17 @@
       🤖 Agent 决策（{{ decision.engine }}）：{{ decision.action === 'generate_attribution' ? '建议生成归因报告' : '仅更新看板' }}——{{ decision.reason }}
     </div>
 
+    <!-- F8 V4：首页最新报告卡（归档真源在报告中心；加载失败静默隐藏，不抢主视线） -->
+    <div v-if="latestReport" class="latest-report">
+      <span class="lr-theme">{{ themeLabel(latestReport.theme) }}</span>
+      <span class="lr-title">最新报告：{{ latestReport.product }} · {{ latestReport.period }}</span>
+      <a v-if="latestReport.docx" :href="api.reportUrl(latestReport.docx.name)"
+        :download="latestReport.docx.name">Word</a>
+      <a v-if="latestReport.pdf" :href="api.reportUrl(latestReport.pdf.name)"
+        :download="latestReport.pdf.name">PDF</a>
+      <button class="lr-more" @click="navigate('reports')">报告中心 →</button>
+    </div>
+
     <!-- F3：告警行动卡片列——每条告警可处置：确认 / 生成归因 / 下发整改 -->
     <AlertActionCards v-if="metrics && metrics.alerts.length"
       :alerts="metrics.alerts" :product="store.product" :month="store.month"
@@ -41,8 +52,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { api, loadDemoAttribution } from '../api'
+import { themeLabel } from '../archiveHelpers'
+import { navigate } from '../router'
 import { store } from '../store'
 import { heatmapOption, structureOption, trendOption, waterfallOption } from '../charts/options'
 import ChartPanel from '../components/ChartPanel.vue'
@@ -51,8 +64,15 @@ import AlertActionCards from '../components/AlertActionCards.vue'
 import KpiRow from '../components/KpiRow.vue'
 import type {
   AttributionResp, DecisionResp, ForecastResp, HeatmapResp, MetricsResp,
-  SeriesResp, StructureResp, WaterfallResp,
+  ReportItem, SeriesResp, StructureResp, WaterfallResp,
 } from '../types'
+
+// F8 V4：首页最新报告卡（服务端已按 mtime 倒序，取第一条）
+const latestReport = ref<ReportItem | null>(null)
+onMounted(async () => {
+  try { latestReport.value = (await api.reports()).reports[0] ?? null }
+  catch { latestReport.value = null }
+})
 
 const seriesData = ref<SeriesResp | null>(null)
 const forecastData = ref<ForecastResp | null>(null)
@@ -165,6 +185,25 @@ watch(() => store.attributionRequest, (n, o) => {
   background: #eae7f6; border: none; color: #3b2f75; box-shadow: var(--shadow);
 }
 .decision.dashboard_only { background: var(--card); color: var(--text-unit); }
+
+/* F8 V4：首页最新报告卡 */
+.latest-report {
+  margin: 0 0 14px; padding: 10px 16px; border-radius: 12px; font-size: 12.5px;
+  background: var(--card); box-shadow: var(--shadow);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.lr-theme {
+  font-size: 10.5px; padding: 1px 7px; border-radius: 999px;
+  background: rgba(46, 109, 164, 0.1); color: var(--primary);
+}
+.lr-title { color: var(--text-num); font-weight: 600; }
+.latest-report a { color: var(--primary); text-decoration: none; font-size: 12px; }
+.latest-report a:hover { text-decoration: underline; }
+.lr-more {
+  margin-left: auto; border: none; background: none; cursor: pointer;
+  color: var(--text-label); font-size: 12px;
+}
+.lr-more:hover { color: var(--primary); }
 .grid {
   display: grid; gap: 14px; margin-bottom: 14px;
   grid-template-columns: 1.6fr 1fr;
