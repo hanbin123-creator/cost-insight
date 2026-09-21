@@ -35,7 +35,7 @@
           :loading="loading.waterfall" :error="errors.waterfall" />
       </div>
       <ChartPanel class="area-heat" title="热力图 · 产品×月份×要素环比（加分项）"
-        hint="点击格子可切换看板的产品与月份"
+        hint="点击格子可切换看板的产品与月份；蓝色描边高亮 = 当前看板所选"
         :option="heatmapOpt" :loading="loading.heatmap" :error="errors.heatmap"
         @chart-click="onHeatClick" />
     </main>

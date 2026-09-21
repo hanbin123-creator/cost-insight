@@ -237,19 +237,32 @@ export function structureOption(s: StructureResp) {
 export function heatmapOption(h: HeatmapResp, sel?: { product?: string; month?: string }) {
   const nums = h.data.map((d) => d[2]).filter((v): v is number => v !== null)
   const max = Math.ceil(Math.max(...nums.map(Math.abs), 1))
-  // F4 V4 联动：当前选中的 产品×月份 格子加深色描边（行名格式 "产品·要素"，仅做匹配摆放）
+  // F4 V4 联动：当前选中的 产品×月份 格子高亮——主色描边 + 柔光晕影，
+  // 让"选中态"一眼可读为设计行为而非渲染瑕疵（用户曾误以为异常蓝框）
   const selMi = sel?.month ? h.months.indexOf(sel.month) : -1
   const isSel = (d: [number, number, number | null]) =>
     sel?.product != null && selMi >= 0 && d[0] === selMi &&
     (h.rows[d[1]] ?? '').startsWith(`${sel.product}·`)
   const data = h.data.map((d) =>
-    isSel(d) ? { value: d, itemStyle: { borderColor: CT.main, borderWidth: 2 } } : d)
+    isSel(d)
+      ? {
+          value: d,
+          itemStyle: {
+            borderColor: CT.main,
+            borderWidth: 2,
+            shadowColor: 'rgba(46, 109, 164, 0.45)',
+            shadowBlur: 7,
+          },
+        }
+      : d)
   return {
     textStyle,
     tooltip: {
-      formatter: (p: { data: [number, number, number | null] }) => {
-        const [mi, ri, v] = p.data
-        return `${h.rows[ri]}<br/>${h.months[mi]} 环比: ${v === null ? '—' : `${v}%`}`
+      formatter: (p: { data: [number, number, number | null] | { value: [number, number, number | null] } }) => {
+        const raw = Array.isArray(p.data) ? p.data : p.data.value
+        const [mi, ri, v] = raw
+        const cur = isSel(raw) ? '✓ 当前看板所选<br/>' : ''
+        return `${cur}${h.rows[ri]}<br/>${h.months[mi]} 环比: ${v === null ? '—' : `${v}%`}`
       },
     },
     grid: { left: 150, right: 60, top: 20, bottom: 60 },

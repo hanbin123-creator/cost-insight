@@ -58,6 +58,23 @@ describe('heatmapOption 选中描边（F4 V4 联动）', () => {
     const badMonth = heatmapOption(h, { product: '银黄口服液', month: '1999-01' }) as { series: Array<{ data: unknown[] }> }
     expect(badMonth.series[0]!.data.every(Array.isArray)).toBe(true)
   })
+
+  it('tooltip 双形态兼容：选中格（对象包装）不炸且带"当前看板"前缀，普通格无前缀', () => {
+    const product = h.rows[0]!.split('·')[0]!
+    const month = h.months[h.months.length - 1]!
+    const opt = heatmapOption(h, { product, month }) as {
+      series: Array<{ data: Array<[number, number, number | null] | { value: [number, number, number | null] }> }>
+      tooltip: { formatter: (p: { data: unknown }) => string }
+    }
+    const selCell = opt.series[0]!.data.find((d) => !Array.isArray(d)) as { value: [number, number, number | null] }
+    const plainCell = opt.series[0]!.data.find(Array.isArray) as [number, number, number | null]
+    const selTip = opt.tooltip.formatter({ data: selCell })       // 修复前：此处直接 TypeError
+    const plainTip = opt.tooltip.formatter({ data: plainCell })
+    expect(selTip).toContain('当前看板')
+    expect(selTip).toContain(h.rows[selCell.value[1]]!)
+    expect(plainTip).not.toContain('当前看板')
+    expect(plainTip).toContain('环比')
+  })
 })
 
 describe('告警行动卡纯函数', () => {
