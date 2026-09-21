@@ -1,0 +1,41 @@
+/* 设计 token：浅色工业卡片风（04 号油气看板）+ 语义色纪律（ISA-101 / 05 号航班看板）+ Carbon 分层
+   条款 6：语义 token（状态）与图表 token（系列）分层定义，禁止混用 */
+:root {
+  /* 基底与卡片（条款 1：浅色办公默认；D5 美学：04 号参考图的淡紫灰底 + 软阴影浮卡） */
+  --bg: #f4f3f9;
+  --card: #ffffff;
+  --border: #e3e9ef;
+  --radius: 14px;
+  --shadow: 0 2px 10px rgba(59, 47, 117, 0.07);
+  --shadow-lg: 0 6px 20px rgba(59, 47, 117, 0.12);
+
+  /* 导航（04 号参考图深紫） */
+  --nav: #3b2f75;
+  --nav-hover: #4a3a8f;
+  --nav-active: #52419f;
+  --nav-text: rgba(255, 255, 255, 0.92);
+  --nav-text-dim: rgba(255, 255, 255, 0.55);
+
+  /* 主色与交互 */
+  --primary: #2e6da4;
+  --primary-hover: #24557e;
+
+  /* 语义 token（条款 2：只给偏离态；ISA-101：正常=中性） */
+  --sem-normal: #d5dde5;   /* 平稳中性——“运行是默认态，不该吸引眼球” */
+  --sem-good: #27a06c;     /* 有利方向（成本下降） */
+  --sem-warn: #e8a13d;     /* 预警 */
+  --sem-alert: #c0392b;    /* 告警 */
+  --sem-info: #1d9e8f;     /* 提示/正常数据态 */
+  --sem-alert-bg: #fdedec;
+  --sem-warn-bg: #fdf6e7;
+
+  /* 文字三级透明度（条款 7） */
+  --text-num: #2c3e50;                 /* 数值 100% */
+  --text-unit: rgba(44, 62, 80, 0.6);  /* 单位 60% */
+  --text-label: rgba(44, 62, 80, 0.45);/* 标签 40% */
+  --font-num: 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-text: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); font-family: var(--font-text); color: var(--text-num); }

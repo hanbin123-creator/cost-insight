@@ -1,0 +1,127 @@
+# L1 占位符映射（模板自适应与可复用方案 3.2）
+# 模板键名 → 内部标准字段。换模板/换行业 = 改本文件，不改代码。
+# 校验（app/mapping.py 导入时执行，失败即 ImportError 人话报错）：
+#   ① 本文件键（含别名解析）必须覆盖注册表全部键
+#   ② 本文件值必须等于代码声明的标准字段（report_data.ALL_SCALAR_FIELDS 等）
+
+scalars:
+  # —— 封面组 ——
+  报告标题: report.title
+  报告类型: report.type
+  分析月份: report.month
+  产品名称: report.product
+  编制日期: report.date
+  # —— 2.1 核心指标组 ——
+  产品规格: product.spec
+  本月产量: output.current
+  上月产量: output.prev
+  产量环比: output.mom
+  去年同月产量: output.yoy_value
+  产量同比: output.yoy
+  预算产量: output.budget
+  产量预算偏差: output.budget_dev
+  本月单位成本: unit_cost.current
+  上月单位成本: unit_cost.prev
+  单位成本环比: unit_cost.mom
+  去年单位成本: unit_cost.yoy_value
+  单位成本同比: unit_cost.yoy
+  预算单位成本: unit_cost.budget
+  单位成本预算偏差: unit_cost.budget_dev
+  本月总成本: total_cost.current
+  上月总成本: total_cost.prev
+  总成本环比: total_cost.mom
+  去年总成本: total_cost.yoy_value
+  总成本同比: total_cost.yoy
+  预算总成本: total_cost.budget
+  总成本预算偏差: total_cost.budget_dev
+  # —— 要素与结构组（2.1 要素行 + 2.2 结构行） ——
+  本月材料成本: material.cost.current
+  上月材料成本: material.cost.prev
+  材料成本环比: material.cost.mom
+  预算材料成本: material.cost.budget
+  材料预算偏差: material.cost.budget_dev
+  本月人工成本: labor.cost.current
+  上月人工成本: labor.cost.prev
+  人工成本环比: labor.cost.mom
+  预算人工成本: labor.cost.budget
+  人工预算偏差: labor.cost.budget_dev
+  本月制造费用: overhead.cost.current
+  上月制造费用: overhead.cost.prev
+  制造费用环比: overhead.cost.mom
+  预算制造费用: overhead.cost.budget
+  制造费用预算偏差: overhead.cost.budget_dev
+  材料金额: material.struct.amount
+  材料占比: material.struct.share
+  材料环比: material.struct.mom
+  材料贡献度: material.struct.contribution
+  人工金额: labor.struct.amount
+  人工占比: labor.struct.share
+  人工贡献度: labor.struct.contribution
+  制造费用金额: overhead.struct.amount
+  制造费用占比: overhead.struct.share
+  制造费用贡献度: overhead.struct.contribution
+  单位成本: unit_cost.value
+  总环比: unit_cost.total_mom
+  # —— 3.2 人工组 ——
+  人工单位成本: labor.unit.current
+  上月人工单位成本: labor.unit.prev
+  人工环比: labor.unit.mom
+  本月工时: labor.hours.current
+  上月工时: labor.hours.prev
+  工时环比: labor.hours.mom
+  本月时薪: labor.wage.current
+  上月时薪: labor.wage.prev
+  时薪环比: labor.wage.mom
+  本月效率: labor.efficiency.current
+  上月效率: labor.efficiency.prev
+  效率环比: labor.efficiency.mom
+  # —— 3.3 制造费用组 ——
+  本月折旧: overhead.depreciation.current
+  上月折旧: overhead.depreciation.prev
+  折旧环比: overhead.depreciation.mom
+  折旧变动说明: overhead.depreciation.note
+  本月动力: overhead.power.current
+  上月动力: overhead.power.prev
+  动力环比: overhead.power.mom
+  动力变动说明: overhead.power.note
+  本月间接人工: overhead.indirect.current
+  上月间接人工: overhead.indirect.prev
+  间接人工环比: overhead.indirect.mom
+  间接人工变动说明: overhead.indirect.note
+  本月检验: overhead.inspection.current
+  上月检验: overhead.inspection.prev
+  检验环比: overhead.inspection.mom
+  检验变动说明: overhead.inspection.note
+  本月其他: overhead.other.current
+  上月其他: overhead.other.prev
+  其他环比: overhead.other.mom
+  其他变动说明: overhead.other.note
+  制造费用合计: overhead.total.current
+  上月制造费用合计: overhead.total.prev
+  制造费用合计环比: overhead.total.mom
+
+dynamic_tables:
+  原材料成本明细表格: rows.materials
+  近6个月成本趋势表格: rows.trend
+  原材料价格跟踪表格: rows.price
+  对标差异表格: rows.benchmark
+  整改任务表格: rows.rectify
+  改进建议表格: rows.suggest
+
+text_sections:
+  材料成本归因分析文本: section.material_attribution
+  成本异常排查分析: section.anomaly
+  差异结构拆解分析: section.diff_structure
+  差异归因分析文本: section.diff_attribution
+  本月亮点: section.highlights
+  需关注问题: section.concerns
+
+# 别名归一规则（正则替换，自上而下，命中即查表）：模板改名先归一再映射。
+# 方向 = 把"模板里的新叫法"归一成"本文件里的既有键"。
+aliases:
+  - pattern: "^当月"
+    replace: "本月"
+  - pattern: "^上期"
+    replace: "上月"
+  - pattern: "^去年同期"
+    replace: "去年同月"

@@ -1,0 +1,41 @@
+# 创灵境成本分析 · 一键部署（两容器：app + web）
+# 决策记录：弃三容器（renderer 独立成 gotenberg 式转换服务）选两容器——
+# render.py 本机 subprocess 调 soffice，LibreOffice 与 FastAPI 同容器则零代码改动、
+# 少一个跨容器故障面；代价是 app 镜像体积 +约 600MB（LibreOffice+字体），
+# 企业演进如需横向扩缩 API 副本再把渲染拆出去（render_pdf 接口不变，换 HTTP 实现即可）。
+#
+# 用法：
+#   docker compose up --build
+#   浏览器开 http://localhost/          （web → nginx）
+#   API 文档  http://localhost:8000/docs
+services:
+  app:
+    build: .
+    environment:
+      # 考题数据源挂卷路径（config.py 的 COST_INSIGHT_DATA_DIR 覆盖点）
+      COST_INSIGHT_DATA_DIR: /data-source
+      # 生产向量后端：Milvus Lite（仅 Linux 可跑，容器内满足；数据卷持久化）
+      VECTOR_BACKEND: milvus_lite
+      # LLM 评测接入：赛方 API 三件套，运行时注入，绝不入镜像
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      # RPA 官方 mock（宿主机跑 mock_rpa_server.py 时指 host.docker.internal）
+      RPA_BASE_URL: ${RPA_BASE_URL:-http://host.docker.internal:8090}
+    volumes:
+      - ../创灵境_考题模拟数据:/data-source:ro   # 考题数据只读挂入（保密红线：不 COPY 入镜像）
+      - kb-data:/app/data/kb                      # 索引持久化（首次启动由 entrypoint 构建）
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+volumes:
+  kb-data:

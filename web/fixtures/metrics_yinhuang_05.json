@@ -1,0 +1,124 @@
+{
+ "product": "银黄口服液",
+ "month": "2026-05",
+ "output_qty": 58000,
+ "unit_cost": 11.21,
+ "total_cost": 650180.0,
+ "elements": {
+  "直接材料": {
+   "current": 7.3,
+   "prev_month": 7.08,
+   "prev_year": 6.84,
+   "budget": 6.8,
+   "mom_pct": 3.1,
+   "yoy_pct": 6.7,
+   "budget_dev_pct": 7.4,
+   "contribution_pct": 71.0
+  },
+  "直接人工": {
+   "current": 1.53,
+   "prev_month": 1.5,
+   "prev_year": 1.51,
+   "budget": 1.5,
+   "mom_pct": 2.0,
+   "yoy_pct": 1.3,
+   "budget_dev_pct": 2.0,
+   "contribution_pct": 9.7
+  },
+  "制造费用": {
+   "current": 2.38,
+   "prev_month": 2.32,
+   "prev_year": 2.36,
+   "budget": 2.3,
+   "mom_pct": 2.6,
+   "yoy_pct": 0.8,
+   "budget_dev_pct": 3.5,
+   "contribution_pct": 19.4
+  }
+ },
+ "unit_cost_mom_pct": 2.8,
+ "unit_cost_yoy_pct": 4.7,
+ "unit_cost_budget_dev_pct": 5.8,
+ "decomposition": [
+  {
+   "material": "金银花",
+   "method": "market_price",
+   "price_prev": 130.0,
+   "price_curr": 138.0,
+   "qty_prev": 0.0258,
+   "qty_curr": 0.0254,
+   "price_effect": 0.2029,
+   "qty_effect": -0.0529,
+   "covered": true,
+   "note": "按市场行情价分解"
+  },
+  {
+   "material": "黄芩提取物",
+   "method": "market_price",
+   "price_prev": 46.0,
+   "price_curr": 47.0,
+   "qty_prev": 0.0467,
+   "qty_curr": 0.0468,
+   "price_effect": 0.0468,
+   "qty_effect": 0.0032,
+   "covered": true,
+   "note": "按市场行情价分解"
+  },
+  {
+   "material": "蔗糖",
+   "method": "market_price",
+   "price_prev": 6.9,
+   "price_curr": 7.0,
+   "qty_prev": 0.0681,
+   "qty_curr": 0.0686,
+   "price_effect": 0.0069,
+   "qty_effect": 0.0031,
+   "covered": true,
+   "note": "按市场行情价分解"
+  },
+  {
+   "material": "苯甲酸钠",
+   "method": "market_price",
+   "price_prev": 22.5,
+   "price_curr": 23.0,
+   "qty_prev": 0.0071,
+   "qty_curr": 0.007,
+   "price_effect": 0.0035,
+   "qty_effect": -0.0035,
+   "covered": true,
+   "note": "按市场行情价分解"
+  },
+  {
+   "material": "纯化水",
+   "method": "stable_price_assumption",
+   "price_prev": null,
+   "price_curr": null,
+   "qty_prev": null,
+   "qty_curr": null,
+   "price_effect": 0.0,
+   "qty_effect": 0.0,
+   "covered": false,
+   "note": "行情未覆盖的稳价辅料，假设价格不变，变动全部按用量差异处理（假设口径）"
+  },
+  {
+   "material": "包装材料(盒+说明书)",
+   "method": "stable_price_assumption",
+   "price_prev": null,
+   "price_curr": null,
+   "qty_prev": null,
+   "qty_curr": null,
+   "price_effect": 0.0,
+   "qty_effect": 0.01,
+   "covered": false,
+   "note": "行情未覆盖的稳价辅料，假设价格不变，变动全部按用量差异处理（假设口径）"
+  }
+ ],
+ "alerts": [
+  {
+   "channel": "累计涨幅",
+   "element": "金银花",
+   "mom_pct": 10.4,
+   "message": "金银花行情价年初至当月累计+10.4%，超出±10%累计阈值"
+  }
+ ]
+}

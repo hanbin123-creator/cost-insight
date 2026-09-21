@@ -1,0 +1,58 @@
+{
+ "product": "六味地黄胶囊",
+ "month": "2026-03",
+ "total_change": -0.58,
+ "waterfall_close_gap": 0.0,
+ "segments": [
+  {
+   "name": "上月(2026-02)",
+   "type": "total",
+   "start": 0.0,
+   "end": 17.6,
+   "value": 17.6,
+   "direction": "base",
+   "transparent_base": 0.0,
+   "visible": 17.6
+  },
+  {
+   "name": "直接材料",
+   "type": "delta",
+   "start": 17.6,
+   "end": 17.24,
+   "value": -0.36,
+   "direction": "down",
+   "transparent_base": 17.24,
+   "visible": 0.36
+  },
+  {
+   "name": "直接人工",
+   "type": "delta",
+   "start": 17.24,
+   "end": 17.14,
+   "value": -0.1,
+   "direction": "down",
+   "transparent_base": 17.14,
+   "visible": 0.1
+  },
+  {
+   "name": "制造费用",
+   "type": "delta",
+   "start": 17.14,
+   "end": 17.02,
+   "value": -0.12,
+   "direction": "down",
+   "transparent_base": 17.02,
+   "visible": 0.12
+  },
+  {
+   "name": "本月(2026-03)",
+   "type": "total",
+   "start": 0.0,
+   "end": 17.02,
+   "value": 17.02,
+   "direction": "base",
+   "transparent_base": 0.0,
+   "visible": 17.02
+  }
+ ]
+}

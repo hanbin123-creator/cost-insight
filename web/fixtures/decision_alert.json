@@ -1,0 +1,7 @@
+{
+ "product": "银黄口服液",
+ "month": "2026-05",
+ "action": "generate_attribution",
+ "reason": "触发 1 条告警：金银花行情价年初至当月累计+10.4%，超出±10%累计阈值",
+ "engine": "rule-based-v1"
+}

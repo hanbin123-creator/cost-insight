@@ -1,0 +1,21 @@
+# 主版本锁定纪律（D1 教训）：pandas 主版本升级曾致行为断裂
+fastapi
+uvicorn
+pydantic>=2,<3
+pandas>=2,<4
+numpy
+pdfplumber
+python-docx
+docxtpl
+# 向量库：pymilvus 在 Windows 仅作客户端安装；Milvus Lite 运行时仅 Linux/Docker（见开发日志02 D12）
+# 开发机默认 VECTOR_BACKEND=numpy（精确余弦，结果与 Lite 一致）
+pymilvus
+fastembed
+rank_bm25
+jieba
+httpx
+tenacity
+matplotlib
+statsmodels
+pyyaml
+pytest

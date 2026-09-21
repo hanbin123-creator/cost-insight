@@ -1,0 +1,58 @@
+{
+ "product": "银黄口服液",
+ "month": "2026-05",
+ "total_change": 0.31,
+ "waterfall_close_gap": 0.0,
+ "segments": [
+  {
+   "name": "上月(2026-04)",
+   "type": "total",
+   "start": 0.0,
+   "end": 10.9,
+   "value": 10.9,
+   "direction": "base",
+   "transparent_base": 0.0,
+   "visible": 10.9
+  },
+  {
+   "name": "直接材料",
+   "type": "delta",
+   "start": 10.9,
+   "end": 11.12,
+   "value": 0.22,
+   "direction": "up",
+   "transparent_base": 10.9,
+   "visible": 0.22
+  },
+  {
+   "name": "直接人工",
+   "type": "delta",
+   "start": 11.12,
+   "end": 11.15,
+   "value": 0.03,
+   "direction": "up",
+   "transparent_base": 11.12,
+   "visible": 0.03
+  },
+  {
+   "name": "制造费用",
+   "type": "delta",
+   "start": 11.15,
+   "end": 11.21,
+   "value": 0.06,
+   "direction": "up",
+   "transparent_base": 11.15,
+   "visible": 0.06
+  },
+  {
+   "name": "本月(2026-05)",
+   "type": "total",
+   "start": 0.0,
+   "end": 11.21,
+   "value": 11.21,
+   "direction": "base",
+   "transparent_base": 0.0,
+   "visible": 11.21
+  }
+ ]
+}

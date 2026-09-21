@@ -1,0 +1,14 @@
+# 构建上下文瘦身：考题数据/密钥/缓存绝不入镜像（保密红线与体积双重约束）
+.git
+__pycache__/
+**/__pycache__/
+*.pyc
+.env
+reports/
+cache/
+data/cost.db
+web/node_modules/
+web/dist/
+tests/
+*.md
+!README.md
