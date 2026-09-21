@@ -199,17 +199,33 @@ def _log_dispatch(task, send: dict, notify: dict, db_path=None) -> None:
         conn.close()
 
 
-def _sent_titles(product: str, month: str, db_path=None) -> set[str]:
-    """幂等查重：同产品同月已成功发送的标题集合（重复 dispatch 不产生重复任务）。"""
+def _sent_records(product: str, month: str, db_path=None) -> list[dict]:
+    """幂等查重：同产品同月已成功发送的 [{task_id, title}]（双向核实要用 task_id）。"""
     conn = storage.connect(db_path)
     try:
         _ensure_table(conn)
         df = storage.query(
-            "SELECT title FROM dispatch_log WHERE product=? AND month=? AND ok=1",
+            "SELECT task_id, title FROM dispatch_log WHERE product=? AND month=? AND ok=1",
             (product, month), conn)
-        return set(df["title"])
+        return df.to_dict("records")
     finally:
         conn.close()
+
+
+def _verify_remote(task_ids: list[str], timeout: float = 5.0) -> set[str] | None:
+    """双向核实（问题一修复）：逐个问 RPA 侧任务是否仍在，覆盖 mock 重启失忆场景。
+    返回对方查不到的 task_id 集合；服务不可达返回 None——fail-safe：
+    全部视为已送达、不补发，防止对方其实有记录时重复下发（对方 400 去重
+    是第二道保险）。参考 task-state-guard：不把未知结果猜成已送达。"""
+    missing: set[str] = set()
+    for tid in task_ids:
+        try:
+            r = httpx.get(f"{C.RPA_BASE_URL}/api/rpa/tasks/{tid}", timeout=timeout)
+            if r.status_code == 404:
+                missing.add(tid)
+        except httpx.TransportError:
+            return None
+    return missing
 
 
 def _next_seq(month: str, db_path=None) -> int:
@@ -227,18 +243,38 @@ def _next_seq(month: str, db_path=None) -> int:
 def dispatch(product: str, month: str, calc, llm=None, speed: str | None = None,
              roster: dict | None = None, db_path=None,
              backoff: tuple = C.RPA_RETRY_BACKOFF) -> dict:
-    """告警 → 整改任务下发全流程。任何环节失败如实记录，不假装成功。"""
+    """告警 → 整改任务下发全流程。任何环节失败如实记录，不假装成功。
+
+    幂等 = 双向核实（问题一修复）：本地 dispatch_log 记"已发送"只是收据，
+    跳过前先逐个远程核实任务仍在 RPA 侧；对方查不到（mock 重启失忆）的
+    用原 task_id 补发；对方不可达则不补发并标 unverified（fail-safe，
+    宁可待核实也不制造重复任务——对方 400 去重是第二道保险）。"""
     pack = calc.metrics(product, month)
     if not pack.alerts:
         return {"product": product, "month": month, "tasks": [],
-                "note": "本月无告警，无整改任务"}
-    already = _sent_titles(product, month, db_path)
+                "note": "本月无告警，无整改任务", "unverified": False, "resent": 0}
+    records = _sent_records(product, month, db_path)
+    missing = _verify_remote([r["task_id"] for r in records]) if records else set()
+    unverified = missing is None
+    if unverified:
+        already = {r["title"] for r in records}
+        resend_ids: dict[str, str] = {}
+    else:
+        already = {r["title"] for r in records if r["task_id"] not in missing}
+        resend_ids = {r["title"]: r["task_id"] for r in records
+                      if r["task_id"] in missing}
     tasks = assemble_tasks(product, month, pack.alerts, roster, speed,
                            seq_start=_next_seq(month, db_path))
     tasks = [t for t in tasks if t.task_title not in already]
+    # 补发任务复用原 task_id：对方侧身份稳定，追踪页历史与补发单自然合并
+    tasks = [t.model_copy(update={"task_id": resend_ids[t.task_title]})
+             if t.task_title in resend_ids else t for t in tasks]
     if not tasks:
+        note = ("全部告警任务此前已发送；RPA 暂不可达，未远程核实（不补发防重复）"
+                if unverified else
+                "全部告警任务此前已发送并经远程核实（幂等跳过，不重复下发）")
         return {"product": product, "month": month, "tasks": [],
-                "note": "全部告警任务此前已发送（幂等跳过，不重复下发）"}
+                "note": note, "unverified": unverified, "resent": 0}
     tasks, text_source = polish_tasks(tasks, llm, pack.alerts)
 
     results = []
@@ -253,9 +289,12 @@ def dispatch(product: str, month: str, calc, llm=None, speed: str | None = None,
             "priority": t.priority, "deadline": t.deadline,
             "dispatch": "sent" if send["ok"] else "dispatch_failed",
             "notify": "pushed" if notify["ok"] else "push_failed",
+            "resent": t.task_title in resend_ids,
             "receipt": send.get("receipt"), "error": send.get("error")})
     return {"product": product, "month": month, "tasks": results,
-            "text_source": text_source, "rpa_base_url": C.RPA_BASE_URL}
+            "text_source": text_source, "rpa_base_url": C.RPA_BASE_URL,
+            "unverified": unverified,
+            "resent": sum(1 for r in results if r["resent"])}
 
 
 def tracking() -> dict:

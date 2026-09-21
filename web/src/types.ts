@@ -137,6 +137,8 @@ export interface RectifyTask {
   deadline: string
   dispatch: 'sent' | 'dispatch_failed'
   notify: 'pushed' | 'push_failed'
+  /** 问题一修复：mock 重启失忆后用原 task_id 补发的任务 */
+  resent?: boolean
   receipt: unknown
   error: string | null
 }
@@ -148,6 +150,10 @@ export interface RectifyDispatchResp {
   note?: string
   text_source?: string
   rpa_base_url?: string
+  /** 本地记已发但 RPA 不可达、未经远程核实——界面须如实标"待核实" */
+  unverified?: boolean
+  /** 本次补发数量（对方失忆后恢复） */
+  resent?: number
 }
 
 /** 对标差异行（双向口径已由后端算好；description 是代码预生成的无歧义中文句，只读不算） */

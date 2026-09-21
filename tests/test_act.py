@@ -218,10 +218,70 @@ def test_dispatch_idempotent(calc, db, monkeypatch):
             return {"code": 200, "data": {"status": "sent"}}
 
     monkeypatch.setattr(act.httpx, "post", lambda *a, **k: R())
+    # 双向核实：远程确认任务仍在（200）→ 幂等跳过成立
+    monkeypatch.setattr(act.httpx, "get", lambda *a, **k: R())
     r1 = act.dispatch("银黄口服液", "2026-05", calc, db_path=db, backoff=(0.01,))
     assert r1["tasks"] and all(t["dispatch"] == "sent" for t in r1["tasks"])
     r2 = act.dispatch("银黄口服液", "2026-05", calc, db_path=db, backoff=(0.01,))
     assert r2["tasks"] == [] and "幂等跳过" in r2["note"]
+    assert r2["unverified"] is False
+
+
+# ---------- 12b. 问题一修复：双向核实 ----------
+
+def test_dispatch_resends_after_remote_loss(calc, db, monkeypatch):
+    """mock 重启失忆场景：本地记已发、对方 404 → 用原 task_id 补发。"""
+    class Ok:
+        status_code = 200
+        text = ""
+        def json(self):
+            return {"code": 200, "data": {"status": "sent"}}
+
+    monkeypatch.setattr(act.httpx, "post", lambda *a, **k: Ok())
+    monkeypatch.setattr(act.httpx, "get", lambda *a, **k: Ok())
+    r1 = act.dispatch("银黄口服液", "2026-05", calc, db_path=db, backoff=(0.01,))
+    ids1 = [t["task_id"] for t in r1["tasks"]]
+
+    class Gone:
+        status_code = 404
+        text = "任务不存在"
+        def json(self):
+            return {}
+
+    monkeypatch.setattr(act.httpx, "get", lambda *a, **k: Gone())
+    r2 = act.dispatch("银黄口服液", "2026-05", calc, db_path=db, backoff=(0.01,))
+    assert r2["unverified"] is False
+    assert r2["resent"] == len(ids1)
+    # 补发复用原 task_id（对方侧身份稳定）
+    assert sorted(t["task_id"] for t in r2["tasks"]) == sorted(ids1)
+    assert all(t["resent"] for t in r2["tasks"])
+    assert all(t["dispatch"] == "sent" for t in r2["tasks"])
+    # 第三次：对方恢复记忆（200）→ 幂等跳过，不重复补发
+    monkeypatch.setattr(act.httpx, "get", lambda *a, **k: Ok())
+    r3 = act.dispatch("银黄口服液", "2026-05", calc, db_path=db, backoff=(0.01,))
+    assert r3["tasks"] == [] and r3["unverified"] is False
+
+
+def test_dispatch_unverified_when_remote_down(calc, db, monkeypatch):
+    """对方服务不可达：fail-safe 不补发，如实标 unverified。"""
+    class Ok:
+        status_code = 200
+        text = ""
+        def json(self):
+            return {"code": 200, "data": {"status": "sent"}}
+
+    monkeypatch.setattr(act.httpx, "post", lambda *a, **k: Ok())
+    monkeypatch.setattr(act.httpx, "get", lambda *a, **k: Ok())
+    act.dispatch("银黄口服液", "2026-05", calc, db_path=db, backoff=(0.01,))
+
+    def boom(*a, **k):
+        raise act.httpx.ConnectError("refused")
+
+    monkeypatch.setattr(act.httpx, "get", boom)
+    r2 = act.dispatch("银黄口服液", "2026-05", calc, db_path=db, backoff=(0.01,))
+    assert r2["tasks"] == []
+    assert r2["unverified"] is True
+    assert "未远程核实" in r2["note"]
 
 
 # ---------- 13. Pipeline 预设表 ----------

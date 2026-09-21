@@ -27,7 +27,7 @@
       </div>
     </section>
 
-    <p v-if="dispatchNote" class="dispatch-note" :class="{ err: dispatchErr }">{{ dispatchNote }}</p>
+    <p v-if="dispatchNote" class="dispatch-note" :class="{ err: dispatchErr, warn: dispatchWarn && !dispatchErr }">{{ dispatchNote }}</p>
 
     <!-- RPA 不可达：如实状态卡（不展示假数据），给出恢复路径 -->
     <section v-if="data && !data.ok" class="panel unreachable">
@@ -80,6 +80,7 @@ const speed = ref('')
 const dispatching = ref(false)
 const dispatchNote = ref('')
 const dispatchErr = ref(false)
+const dispatchWarn = ref(false)
 
 async function refresh() {
   loading.value = true
@@ -93,13 +94,19 @@ async function dispatchNow() {
   dispatching.value = true
   dispatchNote.value = ''
   dispatchErr.value = false
+  dispatchWarn.value = false
   try {
     const r = await api.rectifyDispatch(store.product, store.month, speed.value || undefined)
     const failed = r.tasks.filter((t) => t.dispatch === 'dispatch_failed').length
-    dispatchNote.value = r.tasks.length
-      ? `装配 ${r.tasks.length} 个任务${failed ? `，其中 ${failed} 个 RPA 不可达已落库 dispatch_failed` : '，已发送'}`
-      : (r.note ?? '无可下发任务')
+    if (r.tasks.length) {
+      const resentNote = r.resent ? `，其中 ${r.resent} 个为补发（对方服务重启后恢复）` : ''
+      dispatchNote.value = `装配 ${r.tasks.length} 个任务${failed ? `，其中 ${failed} 个 RPA 不可达已落库 dispatch_failed` : '，已发送'}${resentNote}`
+    } else {
+      dispatchNote.value = r.note ?? '无可下发任务'
+    }
+    // 问题一修复：本地记已发但未能远程核实 → 琥珀色"待核实"警示，不假装一切正常
     if (failed) dispatchErr.value = true
+    else if (r.unverified) dispatchWarn.value = true
     await refresh()
   } catch (e) {
     dispatchNote.value = `下发失败：${e instanceof Error ? e.message : String(e)}`
@@ -144,6 +151,7 @@ select {
 }
 .dispatch-note { margin: 0; font-size: 12.5px; color: #1e8449; }
 .dispatch-note.err { color: #c0392b; }
+.dispatch-note.warn { color: #b9770e; }
 .unreachable h3 { margin: 0 0 8px; font-size: 14px; color: var(--sem-alert); }
 .unreachable p { margin: 4px 0; font-size: 12.5px; color: var(--text-num); }
 .hint-line { color: var(--text-label) !important; }
