@@ -38,7 +38,7 @@
       <section class="panel area-heat heat-panel">
         <div class="hp-head">
           <h3>热力图（表格式）· 产品×月份×要素环比（加分项）</h3>
-          <span class="hp-hint">点击格子可切换看板的产品与月份；描边高亮 = 当前看板所选</span>
+          <span class="hp-hint">点击格子可切换看板的产品与月份；左上角 ◤ 三角 = 当前看板所选</span>
         </div>
         <HeatTable v-if="heatmapData" :h="heatmapData"
           :sel="{ product: store.product, month: store.month }" @cell-click="onHeatCell" />

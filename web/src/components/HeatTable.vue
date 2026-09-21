@@ -73,13 +73,17 @@ const cell = (ri: number, mi: number): number | null => cellMap.value.get(`${ri}
 .zone-first .zone-name, .zone-first .el-name, .zone-first .cell { border-top: 2px solid #d8dee8; }
 tbody tr:first-child .zone-name, tbody tr:first-child .el-name, tbody tr:first-child .cell { border-top: none; }
 .cell {
-  text-align: center; padding: 8px 4px; min-width: 62px; cursor: pointer;
+  position: relative; text-align: center; padding: 8px 4px; min-width: 62px; cursor: pointer;
   font-variant-numeric: tabular-nums; border-bottom: 1px solid #f4f6fa;
   transition: box-shadow 0.15s ease;
 }
 .cell:hover { outline: 1.5px solid var(--primary); outline-offset: -1.5px; }
-/* 选中高亮：与旧热力图同口径（主色描边 + 柔光晕影） */
-.cell.sel { outline: 2px solid #1f4e79; outline-offset: -2px; box-shadow: 0 0 7px rgba(31, 78, 121, 0.45); }
+/* 选中高亮（方案一）：左上角主色小三角（Excel 批注风）——色阶与数字 0 遮挡 */
+.cell.sel::before {
+  content: ''; position: absolute; top: 0; left: 0; width: 0; height: 0;
+  border-style: solid; border-width: 9px 9px 0 0;
+  border-color: #1f4e79 transparent transparent transparent;
+}
 .legend {
   display: flex; align-items: center; gap: 8px; margin-top: 10px;
   font-size: 10.5px; color: var(--text-label); font-variant-numeric: tabular-nums;
