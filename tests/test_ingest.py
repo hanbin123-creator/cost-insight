@@ -56,3 +56,48 @@ def test_market_long_shape(loaded):
     ml = dfs["market_long"]
     assert set(ml.columns) == {"药材名称", "月份", "市场价"}
     assert len(ml) == 13 * 6
+
+
+# ---------- V3：数值列人话校验 ----------
+
+def test_ensure_numeric_human_error():
+    """V3 回归：数值列混入文字 → DataIntegrityError 带 文件/列/行/原值。"""
+    import pandas as pd
+    from app.ingest import DataIntegrityError, _ensure_numeric
+    dfs = {"summary_2026": pd.DataFrame({
+        "产量(盒)": [45000, 46000],
+        "直接材料(元/盒)": [6.83, "这不是数字"],
+        "直接人工(元/盒)": [1.52, 1.52],
+        "制造费用(元/盒)": [2.68, 2.68],
+        "单位成本(元/盒)": [11.03, 11.03],
+        "总成本(元)": [496350, 507380]})}
+    with pytest.raises(DataIntegrityError) as e:
+        _ensure_numeric(dfs)
+    msg = str(e.value)
+    assert "成本汇总_2026" in msg and "直接材料" in msg and "第 3 行" in msg \
+        and "这不是数字" in msg
+
+
+def test_ensure_numeric_passes_clean_data(loaded):
+    """正常数据过校验且列被写回为 float（不破坏下游算术）。"""
+    from app.ingest import _ensure_numeric
+    dfs, _ = loaded
+    _ensure_numeric(dfs)   # 不抛异常即过
+    assert dfs["summary_2026"]["直接材料(元/盒)"].dtype == float
+
+
+# ---------- V1：.env 加载器 ----------
+
+def test_dotenv_loader(tmp_path, monkeypatch):
+    """V1 回归：.env 键值注入 environ；不覆盖已有环境变量；无文件不炸。"""
+    import os
+    from app.config import _load_dotenv
+    p = tmp_path / ".env"
+    p.write_text("# 注释\nFOO_TEST_KEY=bar\nQUOTED=\"baz\"\n空行下无等号\n",
+                 encoding="utf-8")
+    monkeypatch.delenv("FOO_TEST_KEY", raising=False)
+    monkeypatch.setenv("QUOTED", "preexisting")   # 已存在 → 不被覆盖
+    _load_dotenv(p)
+    assert os.environ["FOO_TEST_KEY"] == "bar"
+    assert os.environ["QUOTED"] == "preexisting"
+    _load_dotenv(tmp_path / "不存在.env")          # 静默跳过

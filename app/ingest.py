@@ -162,9 +162,37 @@ class Store:
         return df.iloc[0]
 
 
+def _ensure_numeric(dfs: dict[str, pd.DataFrame]) -> None:
+    """V3 修复：数值列人话校验——坏值指出 文件/列/行/原值，不再裸抛 TypeError。
+    必须在任何算术（派生/校验）之前调用；合法值原样转 float 写回。"""
+    spec = {
+        "summary_2026": [C.COL_OUTPUT, *C.COST_ELEMENTS, C.COL_UNIT_COST, C.COL_TOTAL_COST],
+        "materials": [C.COL_MAT_SHARE],
+        "overhead": [C.COL_OVERHEAD_UNIT],
+        "labor": [C.COL_LABOR_TOTAL, C.COL_OUTPUT, C.COL_LABOR_HOURS,
+                  C.COL_LABOR_HEADCOUNT, C.COL_LABOR_DAYS],
+    }
+    for key, cols in spec.items():
+        df = dfs.get(key)
+        if df is None:
+            continue
+        for col in cols:
+            if col not in df.columns:
+                continue
+            coerced = pd.to_numeric(df[col], errors="coerce")
+            bad = df[coerced.isna() & df[col].notna()]
+            if not bad.empty:
+                row0 = bad.index[0]
+                raise DataIntegrityError(
+                    f"数据文件 {CSV_FILES.get(key, key)} 列「{col}」第 {row0 + 2} 行 "
+                    f"值「{bad.iloc[0][col]}」不是数字（表头算第 1 行）")
+            df[col] = coerced
+
+
 def load_all(validate_only: bool = False) -> tuple[dict[str, pd.DataFrame], list[str]]:
     """启动入口：加载全部 CSV → 规范化 → 校验 → 派生。返回 (数据集, 警告)。"""
     dfs = {name: _normalize(_read_csv(name), name) for name in CSV_FILES}
+    _ensure_numeric(dfs)                       # V3：算术前先拦非法数值（人话报错）
     dfs["labor"] = derive_labor(dfs["labor"])
     dfs["market_long"] = _pivot_market(dfs["market"])
     warnings = validate(dfs)

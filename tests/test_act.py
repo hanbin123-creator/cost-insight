@@ -311,6 +311,12 @@ def test_rectify_endpoints(monkeypatch):
     from app import storage
     from app.api import app
 
+    # V1 后 .env 会被加载——润色会打真实 LLM。本测试测下发流程而非 LLM，
+    # 显式清掉 LLM 环境（hermetic，离线可重复）
+    for k in ("LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL",
+              "LLM_SMALL_BASE_URL", "LLM_SMALL_API_KEY", "LLM_SMALL_MODEL"):
+        monkeypatch.delenv(k, raising=False)
+
     # 端点走真实库（db_path=None）：先清本用例的幂等记录，保证可重复运行
     conn = storage.connect()
     conn.execute("""CREATE TABLE IF NOT EXISTS dispatch_log (

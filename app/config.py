@@ -4,6 +4,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent          # cost-insight/
 WORKSPACE = ROOT.parent                                 # 创灵境工作区
+
+
+def _load_dotenv(path: Path) -> None:
+    """stdlib 版 .env 加载（V1 修复）：逐行 KEY=VALUE，os.environ.setdefault。
+    不覆盖已存在的环境变量（Docker/评测注入优先）；文件不存在静默跳过。
+    零新依赖——python-dotenv 对一个文件来说是多余的。"""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+_load_dotenv(ROOT / ".env")
+
 # 容器化挂点：compose 把考题数据挂到 /data-source 并用环境变量指过来（默认本机开发路径）
 DATA_DIR = Path(os.environ.get("COST_INSIGHT_DATA_DIR",
                                WORKSPACE / "创灵境_考题模拟数据"))
@@ -65,7 +83,9 @@ RRF_K = 60                                   # RRF 融合常数（业界标准�
 TENANT = "中药一厂"                           # 演进友好字段：多租户第一天就带
 
 # ---- 板块⑥ 行动闭环（RPA）----
-RPA_BASE_URL = os.environ.get("RPA_BASE_URL", "http://localhost:8090")  # 官方 mock；评测零改码切换
+# V2 修复：默认 127.0.0.1 而非 localhost——本机 Windows 上 Python 对 localhost
+# 的每次 HTTP 调用被解析拖慢约 2 秒（127.0.0.1 仅 15ms），dispatch 三次调用慢 6 秒
+RPA_BASE_URL = os.environ.get("RPA_BASE_URL", "http://127.0.0.1:8090")  # 官方 mock；评测零改码切换
 RPA_TIMEOUT = 30.0                       # 官方接口文档超时约定（秒）
 RPA_RETRY_BACKOFF = (2.0, 4.0)           # 指数退避序列（与 llm.py 同策略：3 次尝试）
 RPA_ROSTER_PATH = ROOT / "config" / "rpa_assignees.yaml"   # 责任人名册（演示数据，YAML 外置）

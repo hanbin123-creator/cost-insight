@@ -189,7 +189,12 @@ def test_llm_role_temperature_default_used(monkeypatch):
 
 # ---------- 11. /api/chat 端点契约 ----------
 
-def test_chat_endpoint_contract():
+def test_chat_endpoint_contract(monkeypatch):
+    # V1 后 .env 会被加载——本测试断言的是"无 LLM 走规则兜底"契约，
+    # 必须显式清掉 LLM 环境（hermetic），不能依赖开发机恰好没配 key
+    for k in ("LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL",
+              "LLM_SMALL_BASE_URL", "LLM_SMALL_API_KEY", "LLM_SMALL_MODEL"):
+        monkeypatch.delenv(k, raising=False)
     from fastapi.testclient import TestClient
     from app.api import app
     with TestClient(app) as client:

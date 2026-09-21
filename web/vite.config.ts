@@ -25,7 +25,8 @@ export default defineConfig({
   server: {
     proxy: {
       // 后端 FastAPI；未启动时前端各面板显示错误卡片（三态防线）
-      '/api': 'http://localhost:8000',
+      // V2 联动：127.0.0.1 而非 localhost——Windows 上 localhost 解析慢约 2s/次
+      '/api': 'http://127.0.0.1:8000',
     },
   },
   test: {
