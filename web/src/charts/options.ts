@@ -6,7 +6,7 @@
  *  分类色板基于 Tableau 10（CIELAB 感知均匀）：中等饱和、色相拉开；
  *  红/绿不进分类板，只给方向信号（瀑布涨跌、热力偏离）。 */
 import type {
-  BenchmarkResp, ForecastResp, HeatmapResp, SeriesResp, StructureResp, WaterfallResp,
+  BenchmarkResp, ForecastResp, SeriesResp, StructureResp, WaterfallResp,
 } from '../types'
 
 /** 图表 token（数据角色层）。语义状态色见 tokens.css --sem-*，两层禁止混用 */
@@ -234,50 +234,9 @@ export function structureOption(s: StructureResp) {
   }
 }
 
-export function heatmapOption(h: HeatmapResp, sel?: { product?: string; month?: string }) {
-  const nums = h.data.map((d) => d[2]).filter((v): v is number => v !== null)
-  const max = Math.ceil(Math.max(...nums.map(Math.abs), 1))
-  // F4 V4 联动：当前选中的 产品×月份 格子高亮——主色描边 + 柔光晕影，
-  // 让"选中态"一眼可读为设计行为而非渲染瑕疵（用户曾误以为异常蓝框）
-  const selMi = sel?.month ? h.months.indexOf(sel.month) : -1
-  const isSel = (d: [number, number, number | null]) =>
-    sel?.product != null && selMi >= 0 && d[0] === selMi &&
-    (h.rows[d[1]] ?? '').startsWith(`${sel.product}·`)
-  const data = h.data.map((d) =>
-    isSel(d)
-      ? {
-          value: d,
-          itemStyle: {
-            borderColor: CT.main,
-            borderWidth: 2,
-            shadowColor: 'rgba(46, 109, 164, 0.45)',
-            shadowBlur: 7,
-          },
-        }
-      : d)
-  return {
-    textStyle,
-    tooltip: {
-      formatter: (p: { data: [number, number, number | null] | { value: [number, number, number | null] } }) => {
-        const raw = Array.isArray(p.data) ? p.data : p.data.value
-        const [mi, ri, v] = raw
-        const cur = isSel(raw) ? '✓ 当前看板所选<br/>' : ''
-        return `${cur}${h.rows[ri]}<br/>${h.months[mi]} 环比: ${v === null ? '—' : `${v}%`}`
-      },
-    },
-    grid: { left: 150, right: 60, top: 20, bottom: 60 },
-    xAxis: { type: 'category', data: h.months, ...axisCommon },
-    yAxis: { type: 'category', data: h.rows, ...axisCommon },
-    visualMap: {
-      min: -max, max, calculable: true, orient: 'vertical', right: 0, top: 'center',
-      textStyle: { color: CT.axisLabel },
-      // 降饱和发散色：偏离是信号但不必刺眼（MOMOUX 60-75% 饱和度纪律）
-      inRange: { color: [...CT.heat] },
-    },
-    // null 原样传入（首月无环比）——ECharts 渲染为空格，tooltip 显示"—"
-    series: [{ type: 'heatmap', data, label: { show: false } }],
-  }
-}
+// 注：heatmapOption 已于"表格式热力图"改造（方案二+产品分区）移除。
+// 数据端点 /api/charts/heatmap 不变；渲染由 components/HeatTable.vue + heatTable.ts 承接，
+// 选中高亮与点击联动口径不变（纯函数见 heatTable.isSelCell）。
 
 /** F9 蝶形对比图（龙卷风图）：中轴=要素，左展一厂、右展二厂。
  *  一厂值取负仅为"显示镜像"（与轴标签短化同级的展示变换，不是数据计算）；

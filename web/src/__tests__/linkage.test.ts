@@ -1,13 +1,11 @@
-/** 增量2 联动单测：趋势图告警 pin、热力图选中描边、告警行动卡纯函数 */
+/** 增量2 联动单测：趋势图告警 pin、告警行动卡纯函数（热力图选中描边测试已随表格式改造迁至 heat-table.test.ts） */
 import { describe, expect, it } from 'vitest'
-import { CT, heatmapOption, trendOption } from '../charts/options'
+import { CT, trendOption } from '../charts/options'
 import { alertKey, matchTask, momTone } from '../alerts'
-import type { Alert, HeatmapResp, RectifyTask, SeriesResp } from '../types'
-import heatmap from '../../fixtures/heatmap.json'
+import type { Alert, RectifyTask, SeriesResp } from '../types'
 import series from '../../fixtures/series_yinhuang.json'
 
 const s = series as SeriesResp
-const h = heatmap as HeatmapResp
 
 describe('trendOption 告警 pin（F3 V4 联动）', () => {
   it('当前月有告警：单位成本主线钉 pin，坐标=该月实际值，数量=告警条数', () => {
@@ -29,51 +27,6 @@ describe('trendOption 告警 pin（F3 V4 联动）', () => {
     expect(noMark.series[0]!.markPoint).toBeUndefined()
     const badMonth = trendOption(s, null, { month: '1999-01', count: 1 }) as { series: Array<{ markPoint?: unknown }> }
     expect(badMonth.series[0]!.markPoint).toBeUndefined()
-  })
-})
-
-describe('heatmapOption 选中描边（F4 V4 联动）', () => {
-  it('当前 产品×月份 的格子加深色描边：数量=该产品要素行数，月份索引正确', () => {
-    const product = h.rows[0]!.split('·')[0]!
-    const month = h.months[h.months.length - 1]!
-    const mi = h.months.indexOf(month)
-    const rowCount = h.rows.filter((r) => r.startsWith(`${product}·`)).length
-    const opt = heatmapOption(h, { product, month }) as {
-      series: Array<{ data: Array<[number, number, number | null] | { value: [number, number, number | null]; itemStyle: { borderColor: string } }> }>
-    }
-    const bordered = opt.series[0]!.data.filter((d) => !Array.isArray(d))
-    expect(bordered).toHaveLength(rowCount)
-    for (const d of bordered) {
-      if (!Array.isArray(d)) {
-        expect(d.value[0]).toBe(mi)
-        expect(d.itemStyle.borderColor).toBe(CT.main)
-        expect(h.rows[d.value[1]]!.startsWith(`${product}·`)).toBe(true)
-      }
-    }
-  })
-
-  it('无选中参数 / 月份不存在：数据原样（纯数组，无描边包装）', () => {
-    const plain = heatmapOption(h) as { series: Array<{ data: unknown[] }> }
-    expect(plain.series[0]!.data.every(Array.isArray)).toBe(true)
-    const badMonth = heatmapOption(h, { product: '银黄口服液', month: '1999-01' }) as { series: Array<{ data: unknown[] }> }
-    expect(badMonth.series[0]!.data.every(Array.isArray)).toBe(true)
-  })
-
-  it('tooltip 双形态兼容：选中格（对象包装）不炸且带"当前看板"前缀，普通格无前缀', () => {
-    const product = h.rows[0]!.split('·')[0]!
-    const month = h.months[h.months.length - 1]!
-    const opt = heatmapOption(h, { product, month }) as {
-      series: Array<{ data: Array<[number, number, number | null] | { value: [number, number, number | null] }> }>
-      tooltip: { formatter: (p: { data: unknown }) => string }
-    }
-    const selCell = opt.series[0]!.data.find((d) => !Array.isArray(d)) as { value: [number, number, number | null] }
-    const plainCell = opt.series[0]!.data.find(Array.isArray) as [number, number, number | null]
-    const selTip = opt.tooltip.formatter({ data: selCell })       // 修复前：此处直接 TypeError
-    const plainTip = opt.tooltip.formatter({ data: plainCell })
-    expect(selTip).toContain('当前看板')
-    expect(selTip).toContain(h.rows[selCell.value[1]]!)
-    expect(plainTip).not.toContain('当前看板')
-    expect(plainTip).toContain('环比')
   })
 })
 

@@ -1,13 +1,12 @@
 /** 图表映射层单测：真实 API fixture 驱动 + 恶意用例（null 首月 / 负总变动瀑布） */
 import { describe, expect, it } from 'vitest'
 import {
-  CT, heatmapOption, structureOption, trendOption, waterfallOption,
+  CT, structureOption, trendOption, waterfallOption,
 } from '../charts/options'
 import type {
-  ForecastResp, HeatmapResp, SeriesResp, StructureResp, WaterfallResp,
+  ForecastResp, SeriesResp, StructureResp, WaterfallResp,
 } from '../types'
 import forecast from '../../fixtures/forecast_yinhuang.json'
-import heatmap from '../../fixtures/heatmap.json'
 import series from '../../fixtures/series_yinhuang.json'
 import structure from '../../fixtures/structure_yinhuang_01.json'
 import waterfallNeg from '../../fixtures/waterfall_liuwei_03_negative.json'
@@ -86,12 +85,5 @@ describe('structureOption', () => {
   })
 })
 
-describe('heatmapOption', () => {
-  it('首月 null 原样保留（恶意用例：不得被转成 0）', () => {
-    const h = heatmap as HeatmapResp
-    const opt = heatmapOption(h) as { series: Array<{ data: [number, number, number | null][] }> }
-    const firstMonth = opt.series[0]!.data.filter((d) => d[0] === 0)
-    expect(firstMonth.length).toBeGreaterThan(0)
-    for (const d of firstMonth) expect(d[2]).toBeNull()
-  })
-})
+// 注：heatmapOption 已随"表格式热力图"改造移除；null 首月语义由
+// heat-table.test.ts 的 heatCellMap 用例承接（未覆盖坐标 = null = "—"）。

@@ -34,10 +34,17 @@
         <ChartPanel title="瀑布图 · 成本变动分解" :option="waterfallOpt"
           :loading="loading.waterfall" :error="errors.waterfall" />
       </div>
-      <ChartPanel class="area-heat" title="热力图 · 产品×月份×要素环比（加分项）"
-        hint="点击格子可切换看板的产品与月份；蓝色描边高亮 = 当前看板所选"
-        :option="heatmapOpt" :loading="loading.heatmap" :error="errors.heatmap"
-        @chart-click="onHeatClick" />
+      <!-- 表格式热力图（方案二+产品分区）：数字直读+色阶双通道，点击格子联动看板 -->
+      <section class="panel area-heat heat-panel">
+        <div class="hp-head">
+          <h3>热力图（表格式）· 产品×月份×要素环比（加分项）</h3>
+          <span class="hp-hint">点击格子可切换看板的产品与月份；描边高亮 = 当前看板所选</span>
+        </div>
+        <HeatTable v-if="heatmapData" :h="heatmapData"
+          :sel="{ product: store.product, month: store.month }" @cell-click="onHeatCell" />
+        <div v-else-if="loading.heatmap" class="hp-state">加载中…</div>
+        <div v-else-if="errors.heatmap" class="hp-state error">⚠ {{ errors.heatmap }}</div>
+      </section>
     </main>
 
     <div class="gen-bar">
@@ -57,10 +64,11 @@ import { api, loadDemoAttribution } from '../api'
 import { themeLabel } from '../archiveHelpers'
 import { navigate } from '../router'
 import { store } from '../store'
-import { heatmapOption, structureOption, trendOption, waterfallOption } from '../charts/options'
+import { structureOption, trendOption, waterfallOption } from '../charts/options'
 import ChartPanel from '../components/ChartPanel.vue'
 import AttributionPanel from '../components/AttributionPanel.vue'
 import AlertActionCards from '../components/AlertActionCards.vue'
+import HeatTable from '../components/HeatTable.vue'
 import KpiRow from '../components/KpiRow.vue'
 import type {
   AttributionResp, DecisionResp, ForecastResp, HeatmapResp, MetricsResp,
@@ -102,20 +110,9 @@ const trendOpt = computed(() =>
     : null))
 const waterfallOpt = computed(() => (waterfallData.value ? waterfallOption(waterfallData.value) : null))
 const structureOpt = computed(() => (structureData.value ? structureOption(structureData.value) : null))
-// F4 V4 联动：当前 产品×月份 在热力图上描边高亮
-const heatmapOpt = computed(() =>
-  (heatmapData.value
-    ? heatmapOption(heatmapData.value, { product: store.product, month: store.month })
-    : null))
-
-/** 热力图点格联动：行名"产品·要素"解析出产品，列即月份，写回全局筛选（watcher 自动刷新） */
-function onHeatClick(p: unknown) {
-  const d = (p as { data?: [number, number, number | null] }).data
-  const h = heatmapData.value
-  if (!d || !h) return
-  const product = (h.rows[d[1]] ?? '').split('·')[0]
-  const month = h.months[d[0]]
-  if (!product || !month || !store.products.includes(product)) return
+/** 热力表点格联动：组件直接给出 产品/月份，写回全局筛选（watcher 自动刷新） */
+function onHeatCell(product: string, month: string) {
+  if (!store.products.includes(product)) return
   if (product === store.product && month === store.month) return  // 已是当前选中
   store.product = product
   store.month = month
@@ -216,6 +213,16 @@ watch(() => store.attributionRequest, (n, o) => {
 .area-side > * { flex: 1; min-width: 0; }
 .area-side :deep(.chart) { min-height: 220px; }  /* 侧列两张小图：给主图让出纵向空间 */
 .area-heat { grid-area: heat; min-width: 0; }
+/* 表格式热力图面板（方案二+产品分区） */
+.heat-panel {
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 14px 18px; margin-bottom: 14px;
+}
+.hp-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.hp-head h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-unit); }
+.hp-hint { font-size: 11px; color: var(--text-label); }
+.hp-state { min-height: 120px; display: flex; align-items: center; justify-content: center; color: var(--text-label); }
+.hp-state.error { color: var(--sem-alert); }
 @container (max-width: 600px) {
   /* 内容区过窄（如侧栏展开时的 742px 面板 → 479px）→ 单列堆叠保可读性；
      收起侧栏内容区 619px → 自动恢复主从布局（容器查询感知侧栏状态） */
