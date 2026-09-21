@@ -51,9 +51,7 @@
       <main class="content">
         <DashboardView v-if="route.current === 'dashboard'" />
         <BenchmarkView v-else-if="route.current === 'benchmark'" />
-        <PlaceholderView v-else-if="route.current === 'rectify'" title="整改追踪"
-          plan="V1 看板列（待下发/整改中/已复核）＋ V5 告警卡内嵌联动（数据：/api/rectify/* 已就绪）"
-          hint="增量 4 落地。告警卡下发整改后自动生成看板卡，RPA 状态如实展示。" />
+        <RectifyView v-else-if="route.current === 'rectify'" />
         <PlaceholderView v-else-if="route.current === 'reports'" title="报告中心"
           plan="V3 时间轴归档 ＋ V4 首页最新报告卡（数据：/api/report 月报/季报/专题已就绪）"
           hint="增量 5 落地。顶部新建报告操作条（类型按钮→参数弹窗→进度→入轴）。" />
@@ -63,14 +61,13 @@
       </main>
     </div>
 
-    <!-- B1（用户选定）：Agent 右下角悬浮球（微软 Copilot DAB 范式）。
-         F5 增量落地抽屉对话前，点击给出确定性反馈而非静默 -->
-    <button class="agent-fab" title="问 Agent（F5 增量落地）" @click="pingFab">
+    <!-- B1：Agent 悬浮球（紫系渐变=AI 身份）——F5 落地：点击开合右侧抽屉 -->
+    <button class="agent-fab" :class="{ active: drawerOpen }" title="问 Agent" @click="drawerOpen = !drawerOpen">
       <svg viewBox="0 0 16 16" fill="currentColor" style="width:20px;height:20px">
         <path d="M8 1.5l1.7 4.8 4.8 1.7-4.8 1.7L8 14.5 6.3 9.7 1.5 8l4.8-1.7z"/>
       </svg>
     </button>
-    <div v-if="fabToast" class="fab-toast">Agent 对话面板将在 F5 增量落地（右侧抽屉 + 决策卡片流）</div>
+    <AgentDrawer :open="drawerOpen" @close="drawerOpen = false" />
   </div>
 </template>
 
@@ -80,7 +77,9 @@ import { navigate, ROUTE_TITLES, useRoute, type RouteName } from './router'
 import { initStore, store } from './store'
 import DashboardView from './views/DashboardView.vue'
 import BenchmarkView from './views/BenchmarkView.vue'
+import RectifyView from './views/RectifyView.vue'
 import PlaceholderView from './components/PlaceholderView.vue'
+import AgentDrawer from './components/AgentDrawer.vue'
 
 const route = useRoute()
 
@@ -101,14 +100,8 @@ onMounted(() => narrowMq.addEventListener('change', onNarrow))
 onUnmounted(() => narrowMq.removeEventListener('change', onNarrow))
 const effectiveCollapsed = computed(() => collapsed.value && !narrow.value)
 
-// Agent FAB：F5 前的确定性反馈（点击不静默）
-const fabToast = ref(false)
-let fabTimer: ReturnType<typeof setTimeout> | undefined
-function pingFab() {
-  fabToast.value = true
-  clearTimeout(fabTimer)
-  fabTimer = setTimeout(() => { fabToast.value = false }, 2200)
-}
+// Agent 抽屉（F5 落地）：FAB 开合右侧抽屉，toast 过渡方案退役
+const drawerOpen = ref(false)
 
 // 单色 SVG 图标（currentColor 跟随导航文字色——emoji 彩色方块违反色彩纪律，已淘汰）
 const navItems: { name: RouteName; title: string; icon: string }[] = [
@@ -181,11 +174,7 @@ nav { flex: 1; padding: 12px 10px; display: flex; flex-direction: column; gap: 4
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .agent-fab:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(59, 47, 117, 0.5); }
-.fab-toast {
-  position: fixed; right: 24px; bottom: 82px; z-index: 40;
-  background: #2c3e50; color: #fff; font-size: 12px; padding: 9px 14px;
-  border-radius: 10px; box-shadow: var(--shadow-lg);
-}
+.agent-fab.active { box-shadow: 0 0 0 4px rgba(59, 47, 117, 0.18), 0 6px 18px rgba(59, 47, 117, 0.4); }
 
 .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .topbar {

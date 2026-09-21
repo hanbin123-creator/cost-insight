@@ -152,6 +152,11 @@ async function generate() {
 }
 
 watch(() => [store.product, store.month], refresh, { immediate: true })
+
+// F5 决策卡片流：Agent 抽屉"确认生成归因"跨视图触发（计数器变化即执行）
+watch(() => store.attributionRequest, (n, o) => {
+  if (n > o) generateFromAlert()
+})
 </script>
 
 <style scoped>

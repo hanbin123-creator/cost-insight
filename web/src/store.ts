@@ -11,6 +11,8 @@ export const store = reactive({
   dataThrough: '',
   ready: false,
   loadError: null as string | null,
+  /** 跨视图触发计数器：Agent 抽屉决策卡"确认生成归因" → 看板页执行生成（watch 驱动） */
+  attributionRequest: 0,
 })
 
 export async function initStore() {

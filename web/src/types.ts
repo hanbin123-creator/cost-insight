@@ -176,3 +176,51 @@ export interface BenchmarkResp {
   rows: DiffRow[]
   material_detail: MaterialDiff[]
 }
+
+/** Agent 对话响应（/api/chat）：意图路由四态——执行/澄清/四入口/域外拒答 */
+export interface ChatChoice { intent: string; name: string; description: string }
+
+export interface ChatResult {
+  ok?: boolean
+  intent?: string
+  scene?: string
+  data?: Record<string, unknown>
+  error?: string
+  message?: string
+  choices?: ChatChoice[]
+}
+
+export interface ChatResp {
+  intent: string | null
+  confidence: number
+  layer: string
+  classifier: string
+  params: Record<string, string>
+  clarification: string | null
+  result: ChatResult | null
+}
+
+/** 整改追踪聚合（/api/rectify/tracking；RPA 不可达 ok=false 如实呈现） */
+export interface RpaTask {
+  task_id?: string
+  title?: string
+  status?: string
+  priority?: string
+  assignee?: string
+  department?: string
+  deadline?: string
+  source?: string
+}
+
+export interface TrackingResp {
+  ok: boolean
+  error?: string
+  aggregate: {
+    已生成: number
+    已送达: number
+    已确认: number
+    by_status: Record<string, number>
+    by_priority: Record<string, number>
+  } | null
+  tasks?: RpaTask[]
+}

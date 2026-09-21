@@ -1,7 +1,7 @@
 /** API 访问层：所有请求集中于此；错误统一抛出由面板三态展示 */
 import type {
-  AttributionResp, BenchmarkResp, DecisionResp, HeatmapResp, MetricsResp,
-  ProductsResp, RectifyDispatchResp, SeriesResp, StructureResp, WaterfallResp,
+  AttributionResp, BenchmarkResp, ChatResp, DecisionResp, HeatmapResp, MetricsResp,
+  ProductsResp, RectifyDispatchResp, SeriesResp, StructureResp, TrackingResp, WaterfallResp,
 } from './types'
 
 const BASE = '/api'
@@ -37,10 +37,13 @@ export const api = {
   forecast: (p: string) => get<ForecastResp>(`/forecast/${encodeURIComponent(p)}`),
   attribution: (p: string, m: string) =>
     post<AttributionResp>('/attribution', { product: p, month: m }),
-  rectifyDispatch: (p: string, m: string) =>
-    post<RectifyDispatchResp>('/rectify/dispatch', { product: p, month: m }),
+  rectifyDispatch: (p: string, m: string, speed?: string) =>
+    post<RectifyDispatchResp>('/rectify/dispatch', { product: p, month: m, speed }),
   benchmark: (p: string, m: string) =>
     get<BenchmarkResp>(`/benchmark/${encodeURIComponent(p)}/${m}`),
+  chat: (text: string, p?: string, m?: string) =>
+    post<ChatResp>('/chat', { text, product: p, month: m }),
+  rectifyTracking: () => get<TrackingResp>('/rectify/tracking'),
 }
 
 /** 演示模式：LLM 未配置时加载经校验闭环固化的样例（页面必须标注演示模式） */
