@@ -72,9 +72,27 @@ def test_no_llm_no_rule_hit_returns_choices(pipeline):
     assert "choices" in out["result"]
 
 
-def test_low_confidence_not_overridden_by_rules(pipeline):
-    """模型的'我没把握'（conf>0 低分）不被规则层凌驾——不猜原则的双向约束。"""
-    out = route("对标一下银黄口服液5月", pipeline, llm=_llm("benchmark", 0.3))
+def test_low_confidence_keyword_arbitrated_by_rules(pipeline):
+    """规则仲裁（实弹修复）：模型低置信（'报告'单词只给 0.6）但用户文本含
+    确定性关键词 → 规则层仲裁执行，layer 如实标注 rule-arb。
+    用户亲自打出的关键词是硬证据，执行它不属于"猜"。"""
+    out = route("对标", pipeline, llm=_llm("benchmark", 0.6),
+                product="银黄口服液", month="2026-05")
+    assert out["layer"] == "rule-arb" and out["intent"] == "benchmark"
+    assert out["result"]["ok"] is True
+
+
+def test_low_confidence_disagreement_hard_evidence_wins(pipeline):
+    """低置信分歧：模型低置信说 report，用户文本却打着"对标"——
+    确定性关键词优先于模型的没把握，如实标注 rule-arb。"""
+    out = route("对标", pipeline, llm=_llm("report", 0.5),
+                product="银黄口服液", month="2026-05")
+    assert out["layer"] == "rule-arb" and out["intent"] == "benchmark"
+
+
+def test_low_confidence_no_keyword_still_choices(pipeline):
+    """仲裁的边界：模型低置信且文本无任何关键词硬证据 → 仍然四入口，不猜。"""
+    out = route("帮我看看那个情况", pipeline, llm=_llm("report", 0.5))
     assert out["layer"] == "fallback" and "choices" in out["result"]
 
 

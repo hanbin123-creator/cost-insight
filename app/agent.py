@@ -4,8 +4,9 @@
 - 第1层 小模型分类（主线）：LLMClient(role="classification")，json_mode 强制
   {"intent", "confidence"}；confidence ≥ 阈值（config）→ Pipeline 场景执行
 - 第2层 规则兜底：LLM 未配置/调用失败/返回破损 → 关键词表分类，layer="rule"
-  （断网韧性演示剧本）
-- 第3层 低置信/双不中：返回四入口卡片由用户点选——不猜，让用户选
+  （断网韧性演示剧本）；LLM 低置信但关键词硬命中 → 规则仲裁，layer="rule-arb"
+  （用户打出的关键词是确定性证据，不属于"猜"）
+- 第3层 双不命中/域外：返回四入口卡片由用户点选——不猜，让用户选
 
 铁律：路由只做分发、永不算数；参数抽取规则化（产品别名/月份表达），
 抽不出 → 返回澄清问题，绝不编造参数。
@@ -142,11 +143,15 @@ def route(text: str, pipeline: Pipeline, llm=None, latest_month: str = "2026-06"
         elif intent is not None:
             layer = "fallback"     # 低置信：不执行，走四入口
             intent = None
-    if intent is None and not out_of_scope and (llm is None or conf == 0.0):
-        # LLM 缺席或彻底失败（conf=0）→ 规则兜底；低置信（conf>0）直接四入口，
-        # 不让规则层凌驾于模型的"我没把握"之上
-        intent, conf = _rule_classify(text)
-        layer = "rule" if intent else "fallback"
+    if intent is None and not out_of_scope:
+        # LLM 缺席/失败 → 规则兜底（layer=rule）；LLM 低置信但规则硬命中 →
+        # 确定性证据优先（layer=rule-arb，如实标注"规则仲裁了模型的没把握"）。
+        # 用户亲自打出的关键词是硬证据，不属于"猜"；双不命中才四入口。
+        rule_intent, rule_conf = _rule_classify(text)
+        if rule_intent:
+            # 先定 layer 再覆盖 conf——判断依据是"模型原始置信度"而非规则置信度
+            layer = "rule" if (llm is None or conf == 0.0) else "rule-arb"
+            intent, conf = rule_intent, rule_conf
     base = {"intent": intent, "confidence": conf, "layer": layer,
             "classifier": classifier}
     if intent is None:
