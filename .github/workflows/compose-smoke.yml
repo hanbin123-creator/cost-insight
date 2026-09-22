@@ -1,0 +1,41 @@
+# compose 实机冒烟（缺口 2 修复）：每次 push/PR 在 GitHub runner 上真机构建并启动
+# 全套容器，curl 两个端点证明"起得来、端点活"。模式照 fastapi/full-stack-fastapi-template
+# 的 test-docker-compose.yml；数据用 placeholder-data 合成占位（保密红线：考题数据不入库）。
+# 注意：本链路验证的是"一键启动可达"，数字正确性由 pytest 对账套件负责（分工不混）。
+name: compose-smoke
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build images
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml build
+
+      - name: Start stack（等健康检查全绿）
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --wait --wait-timeout 300
+
+      - name: 后端端点冒烟
+        run: curl --fail --silent http://localhost:8000/api/products
+
+      - name: 前端页面冒烟（web → nginx → SPA）
+        run: curl --fail --silent http://localhost/ | grep -qi html
+
+      - name: 容器日志（失败时取证）
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --tail 100
+
+      - name: 清理
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v --remove-orphans

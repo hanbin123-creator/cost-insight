@@ -1,47 +1,73 @@
 # cost-insight · 制药企业产品成本智能分析系统
 
+[![compose-smoke](../../actions/workflows/compose-smoke.yml/badge.svg)](../../actions/workflows/compose-smoke.yml)
+
 > 2026 年第二届重庆市 AI 大模型创新应用大赛 · 创灵境赛题
-> 架构与选型依据见工作区《创灵境赛题_技术手册.md》（V2.0）及配套设计文档
+> 设计哲学：**大模型永不算数**——所有数字由代码计算（DuckDB/Pandas），大模型只做意图理解与文字表达，数字与文字之间用 schema 闸门与自动对账隔离。
 
-## 结构
+## 一键启动（Docker）
 
-六大运行板块，一板块一文件；竞赛四模块 = 板块的场景组合（pipeline.py 预设表）。
+前置条件：Docker Desktop；考题数据包放在本仓库**同级目录**（`../创灵境_考题模拟数据`，保密数据不入库）。
 
-```
-app/
-├── config.py    全部配置唯一出处（PROFILE 三档）
-├── storage.py   存储层（SQLite→PostgreSQL 的唯一隔离点）
-├── ingest.py    板块① 数据整理：CSV 加载→自洽校验→入库
-├── compute.py   板块② 数据计算：全部数字的唯一产地
-├── kb.py        板块①' 知识库（桩）
-├── retrieve.py  板块③ 混合检索（桩）
-├── generate.py  板块④ 智能生成（桩）
-├── render.py    板块⑤ 渲染输出（桩）
-├── act.py       板块⑥ 行动闭环（桩）
-├── kg.py / predict.py / agent.py   加分项（桩）
-├── llm.py / pipeline.py / context.py / schemas.py / main.py
-tests/test_compute.py   板块①②对账测试（9 项，真实数据验证）
+```bash
+# 基础两容器（app: FastAPI+LibreOffice+中文字体+向量索引全内置 / web: nginx 反代 SPA）
+docker compose up --build
+
+# 需要整改闭环演示时，叠加官方 mock RPA（数据包自带 Dockerfile，现场构建）
+docker compose -f docker-compose.yml -f docker-compose.rpa.yml up --build
 ```
 
-## 快速开始
+- 浏览器打开 **http://localhost/**（成本看板）；API 文档 **http://localhost:8000/docs**
+- LLM 接入（可选）：仓库根放 `.env` 写入 `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL`（OpenAI 兼容格式）。
+  **不配也能跑**——意图路由自动降级规则兜底，报告文字降级模板生成，界面如实标注降级层，不放假数据。
+- 无考题数据包也能预览界面：`docker compose -f docker-compose.yml -f docker-compose.ci.yml up --build`
+  （`placeholder-data/` 为合成占位数据，仅演示用）。
+
+每次 push 由 GitHub Actions 真机执行 `compose build + up --wait + curl 冒烟`（见顶部徽章），
+一键启动可达性由 CI 持续背书。
+
+## 本地开发启动
 
 ```bash
 pip install -r requirements.txt
-# 数据包不入库（保密红线）。默认读取 ../创灵境_考题模拟数据，可用 CI_DATA_DIR 覆盖
-python -m app.ingest            # 板块①：加载+校验+入库
-python tests/test_compute.py    # 板块②：对账测试（无需 pytest 也可跑）
+python -m uvicorn app.api:app --host 127.0.0.1 --port 8000     # 后端
+
+cd web && npm ci && npm run dev                                # 前端（5173，代理至 8000）
+
+# 整改闭环需要官方 mock RPA（另开终端）：
+cd ../创灵境_考题模拟数据/05_RPA接口文档 && python mock_rpa_server.py   # 8090
 ```
 
-## 当前进度
+## 功能地图
 
-- [x] 板块① 数据整理（加载即校验，5 条自洽规则）
-- [x] 板块② 数据计算（环比/同比/预算偏差/贡献度/量差价差/对标三步法前两步/季度加权聚合/±10% 告警/看板 series/热力图 series）
-- [ ] 板块③ 检索增强 ｜ [ ] 板块④ 智能生成 ｜ [ ] 板块⑤ 渲染输出 ｜ [ ] 板块⑥ 行动闭环
-- [ ] 加分项：知识图谱 / 多模型 / Agent / 成本预测
+| 板块 | 入口 | 说明 |
+|---|---|---|
+| 成本看板 | `/` | KPI、趋势/结构/瀑布图、产品×月份×要素热力图（点击联动）、±10% 波动告警 |
+| 对标分析 | `/benchmark` | 一厂 vs 二厂三步法差异树；双向口径代码算好 + 无歧义中文描述，下游只读不算 |
+| 整改追踪 | `/rectify` | 告警→任务装配（schema 闸不过不发）→RPA 下发→微信推送→状态追踪；幂等双向核实 |
+| 报告中心 | `/reports` | 月度/季度/专题 Word+PDF；LLM 撰文、代码对账，校验不过不出货 |
+| 知识库 | `/kb` | RAG 结构化切片 + 图谱化检索 + 编号级精确通道；文档热更新 |
+| Agent 助手 | 右下角抽屉 | 意图路由三层：LLM 主线 → 规则兜底 → 低置信规则仲裁（rule-arb）；域外显式拒答、不明给四入口——不猜、不编造参数 |
 
-## 关键口径备忘
+## 测试与质量
 
-- 对标差异率 = (一厂−二厂) ÷ 二厂（基期为二厂）
-- 季度单位成本 = Σ总成本 ÷ Σ产量（加权，非算术平均）
-- 量差价差借行情价反推单耗；行情表缺价的原料标注跳过
-- 精度：计算全程 float64，仅输出层 ROUND_HALF_UP
+- 后端 **172 项 pytest**（计算对账误差 0、路由仲裁边界、schema 闸、幂等核实）：`pytest tests/`
+- 前端 **69 项 vitest**（视图模型纯函数）：`cd web && npm run test`
+- 断网韧性：LLM/RPA 缺席自动降级且如实标注，服务不炸（CI 冒烟环境即无 LLM 密钥，顺带验证此路径）
+
+## 目录速览
+
+```
+app/            后端六大板块：ingest / compute / retrieve+kb / generate / render / act
+  config.py     全部配置唯一出处 · agent.py 意图路由 · pipeline.py 场景编排
+web/            Vue3 + ECharts 前端（五页面 + Agent 抽屉）
+scripts/        工具链（占位数据生成 / 实弹检查 / 消防演练）
+placeholder-data/  合成占位数据（非考题数据，供 CI 与无数据包预览）
+docs/           开发日志（每个增量的决策/优点/缺点/验证四段式）
+docker-compose.yml / .rpa.yml / .ci.yml   一键启动三件套
+```
+
+## 合规说明
+
+- 考题数据包与 LLM 密钥**不入库**：数据只读挂卷、密钥运行时注入（`.env` 已 gitignore）
+- 开源依赖全为 MIT/Apache/BSD 系；细节见 `docs/` 各开发日志

@@ -1,0 +1,29 @@
+# 可选第三容器：官方 mock RPA（覆盖文件，照 compose override 惯例）
+# 用法：docker compose -f docker-compose.yml -f docker-compose.rpa.yml up --build
+#
+# 决策记录：mock 不进基础 compose 两条原因——
+# ① 保密红线：官方 mock 在考题数据包内，本仓库只给构建指针（../创灵境_考题模拟数据/...），
+#    镜像在评委本机现场构建，仓库零接触数据包；
+# ② 平台对 RPA 缺席本就设计为如实降级（整改页显示不可达、不放假数据），
+#    不需要整改闭环的演示不必多起一个容器。
+# 覆盖 app 的 RPA_BASE_URL 指向容器网络内的 mock-rpa（不再绕 host.docker.internal）。
+services:
+  app:
+    environment:
+      RPA_BASE_URL: http://mock-rpa:8090
+    depends_on:
+      mock-rpa:
+        condition: service_healthy
+
+  mock-rpa:
+    build: ../创灵境_考题模拟数据/05_RPA接口文档   # 官方 Dockerfile（python:3.11-slim）
+    ports:
+      - "8090:8090"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8090/health', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s

@@ -1,0 +1,7 @@
+# CI 冒烟覆盖层：占位数据（scripts/make_placeholder_data.py 生成的合成值）替代
+# 保密数据包挂卷。compose 对 volumes 按目标路径合并，此处仅替换 /data-source 一处。
+# 用法：docker compose -f docker-compose.yml -f docker-compose.ci.yml up --wait
+services:
+  app:
+    volumes:
+      - ./placeholder-data:/data-source:ro

@@ -32,7 +32,8 @@ services:
   web:
     build: ./web
     depends_on:
-      - app
+      app:
+        condition: service_healthy   # 评委看到的永远是"app 绿灯后再放行 web"
     ports:
       - "80:80"
     restart: unless-stopped
