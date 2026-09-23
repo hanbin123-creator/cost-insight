@@ -13,6 +13,11 @@
 # 基础两容器（app: FastAPI+LibreOffice+中文字体+向量索引全内置 / web: nginx 反代 SPA）
 docker compose up --build
 
+# 国内网络构建慢时（实测默认源仅数十 KB/s），传镜像参数加速（默认全上游源，可选）：
+docker compose build --build-arg APT_MIRROR=mirrors.aliyun.com \
+    --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+    --build-arg NPM_REGISTRY=https://registry.npmmirror.com
+
 # 需要整改闭环演示时，叠加官方 mock RPA（数据包自带 Dockerfile，现场构建）
 docker compose -f docker-compose.yml -f docker-compose.rpa.yml up --build
 ```

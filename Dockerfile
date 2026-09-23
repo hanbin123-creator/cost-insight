@@ -5,6 +5,18 @@
 # subprocess 调 soffice），省去跨容器 HTTP 转换服务——少一个故障面。
 FROM python:3.12-slim
 
+# 可选国内加速（实机验证 D28：本机到 deb.debian.org/pypi 仅数十 KB/s）。
+# 默认空 = 全部上游源，评委/CI 零感知；国内构建慢时才显式传入：
+#   docker compose build --build-arg APT_MIRROR=mirrors.aliyun.com \
+#       --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG APT_MIRROR=
+ARG PIP_INDEX_URL=
+RUN if [ -n "$APT_MIRROR" ]; then \
+        for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do \
+            [ -f "$f" ] && sed -i "s|deb.debian.org|$APT_MIRROR|g" "$f"; \
+        done; \
+    fi
+
 # --- LibreOffice 层（docx→pdf 只需 writer 组件；fonts-noto-cjk 保底中文渲染） ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libreoffice-writer libreoffice-core \
@@ -15,7 +27,7 @@ WORKDIR /app
 
 # 依赖层单独 COPY：源码改动不破坏 pip 缓存层
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir ${PIP_INDEX_URL:+--index-url "$PIP_INDEX_URL"} -r requirements.txt
 
 # 项目自带 NotoSansSC 同时注册进系统字体目录（matplotlib 嵌图与 LibreOffice 共用）
 COPY assets/fonts/ /usr/share/fonts/truetype/noto-sc/
@@ -38,6 +50,6 @@ ENV HF_HUB_OFFLINE=1 \
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/products', timeout=4)"
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/products', timeout=4)"
 
 CMD ["/docker_entrypoint.sh"]

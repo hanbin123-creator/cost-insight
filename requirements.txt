@@ -9,7 +9,10 @@ python-docx
 docxtpl
 # 向量库：pymilvus 在 Windows 仅作客户端安装；Milvus Lite 运行时仅 Linux/Docker（见开发日志02 D12）
 # 开发机默认 VECTOR_BACKEND=numpy（精确余弦，结果与 Lite 一致）
-pymilvus
+# 实机验证 D29：Linux 容器必须带 milvus_lite extra，否则 entrypoint 建库即崩——
+# PEP 508 平台标记分流：Windows 装纯客户端，Linux/macOS 带 Lite 运行时
+pymilvus[milvus_lite]; sys_platform != "win32"
+pymilvus; sys_platform == "win32"
 fastembed
 rank_bm25
 jieba
