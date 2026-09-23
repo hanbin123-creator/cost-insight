@@ -16,7 +16,10 @@ export default defineConfig({
         // 函数形式按包名归组——对象形式会让 zrender 漏进 vue 块
         manualChunks(id: string) {
           if (!id.includes('node_modules')) return undefined
-          if (/node_modules[\\/](echarts|zrender)[\\/]/.test(id)) return 'vendor-echarts'
+          // 实机验证 D31：vue-echarts 必须和 echarts 同块——它横跨 vue 与 echarts/core
+          // 两侧导入，分到 vendor-vue 会与 vendor-echarts 形成跨块初始化顺序问题，
+          // 生产构建白屏（cs is not a function），dev 模式无此问题
+          if (/node_modules[\\/](echarts|zrender|vue-echarts)[\\/]/.test(id)) return 'vendor-echarts'
           return 'vendor-vue'
         },
       },
