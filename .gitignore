@@ -6,3 +6,5 @@ __pycache__/
 .kb_index/
 *.db
 .env
+*.db-shm
+*.db-wal
