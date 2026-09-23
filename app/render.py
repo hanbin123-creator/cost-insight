@@ -44,6 +44,36 @@ TABLE_HEADERS = {
     "整改任务表格": ["任务编号", "任务标题", "责任人", "优先级", "来源", "截止时间"],
 }
 
+# 量价分解表（看板排版方案一延伸到 Word）：锚定 3.1.2 材料成本变动归因段插入，
+# 数字取自 metrics.decomposition（代码同源），季度报告口径不同不插入（不硬凑）
+DECOMP_HEADERS = ["材料", "价格(元/kg)", "用量(kg/盒)",
+                  "价格效应(元/盒)", "用量效应(元/盒)", "口径"]
+
+
+def _fmt_pair(prev, curr) -> str:
+    """变迁对格式化：整数浮点保留一位小数（138.0 不丢成 138），与前端 decomp.ts 同口径。"""
+    def f(v):
+        return f"{v:.1f}" if isinstance(v, float) and v.is_integer() else str(v)
+    return f"{f(prev)}→{f(curr)}"
+
+
+def _decomp_rows(decomp) -> list[list[str]]:
+    """Decomposition 列表 → Word 表行（显示格式化，值不变；与前端 decomp.ts 同口径）。"""
+    rows = []
+    for d in decomp:
+        if d.method == "market_price":
+            price = _fmt_pair(d.price_prev, d.price_curr)
+            qty = _fmt_pair(d.qty_prev, d.qty_curr)
+            basis = "行情价分解"
+        elif d.method == "stable_price_assumption":
+            price, qty, basis = "稳价假设", "—", "稳价假设·行情未覆盖"
+        else:
+            price, qty, basis = "—", "—", "数据缺失·不分解"
+        pe = "—" if d.price_effect is None else f"{d.price_effect:+.4f}"
+        qe = "—" if d.qty_effect is None else f"{d.qty_effect:+.4f}"
+        rows.append([d.material, price, qty, pe, qe, basis])
+    return rows
+
 _SOFICE_CANDIDATES = [
     shutil.which("soffice"),
     r"C:\Program Files\LibreOffice\program\soffice.exe",
@@ -169,7 +199,9 @@ def _apply_table_style(table) -> None:
 
 
 def _insert_table_after(doc: docx.Document, paragraph, headers: list[str],
-                        rows: list[list]) -> None:
+                        rows: list[list],
+                        widths_cm: list[float] | None = None,
+                        font_pt: float | None = None) -> None:
     table = doc.add_table(rows=len(rows) + 1, cols=len(headers))
     for j, h in enumerate(headers):
         table.rows[0].cells[j].text = h
@@ -177,6 +209,31 @@ def _insert_table_after(doc: docx.Document, paragraph, headers: list[str],
         for j, v in enumerate(row):
             table.rows[i].cells[j].text = _fmt(v)
     _apply_table_style(table)
+    if font_pt:
+        # 密集数字表降字号（实测：模板默认字号下变迁串超出列宽被腰斩）
+        from docx.shared import Pt as _Pt
+        for row in table.rows:
+            for cell in row.cells:
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.size = _Pt(font_pt)
+    if widths_cm:
+        # 固定列宽防长数字串折断（实测 PDF 中 0.0258→0.0254 被腰斩）：
+        # autofit 会按内容挤压列宽；tblLayout=fixed + 逐格设宽 + tblGrid 同步
+        # （LibreOffice 优先读 tblGrid，只设 tcW 不生效——实机踩坑）
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+        from docx.shared import Cm as _Cm
+        table.autofit = False
+        layout = OxmlElement("w:tblLayout")
+        layout.set(qn("w:type"), "fixed")
+        table._tbl.tblPr.append(layout)
+        grid = table._tbl.tblGrid
+        for j, col in enumerate(grid.findall(qn("w:gridCol"))):
+            col.set(qn("w:w"), str(int(widths_cm[j] * 567)))  # 1cm = 567 twips
+        for row in table.rows:
+            for j, cell in enumerate(row.cells):
+                cell.width = _Cm(widths_cm[j])
     paragraph._p.addnext(table._tbl)
 
 
@@ -189,7 +246,7 @@ def _insert_picture_after(doc: docx.Document, anchor_element, png: Path,
 
 def render_docx(ctx: dict, sections: dict[str, SectionResult],
                 pngs: dict[str, Path], out_path: Path,
-                template: Path = TEMPLATE) -> None:
+                template: Path = TEMPLATE, decomp=None) -> None:
     tpl_ctx: dict = {}
     for k, v in ctx.items():
         if k.startswith("__rows__"):
@@ -228,6 +285,17 @@ def render_docx(ctx: dict, sections: dict[str, SectionResult],
                         if el2.tag.endswith("}tbl"):
                             _insert_picture_after(doc, el2, pngs["structure"])
                             break
+                    break
+        # 量价分解表：锚定 3.1.2 标题，插在其正文段之后（表格管明细，正文讲逻辑）
+        if decomp:
+            paras = list(doc.paragraphs)
+            for idx, para in enumerate(paras):
+                if "3.1.2" in para.text and "归因" in para.text:
+                    anchor = paras[idx + 1] if idx + 1 < len(paras) else para
+                    _insert_table_after(doc, anchor, DECOMP_HEADERS,
+                                        _decomp_rows(decomp),
+                                        widths_cm=[2.2, 2.5, 3.1, 2.15, 2.15, 2.4],
+                                        font_pt=9)
                     break
         out_path.parent.mkdir(parents=True, exist_ok=True)
         doc.save(str(out_path))
@@ -372,10 +440,13 @@ def build_report(calc: CostCalculator, retriever, llm, product: str, month: str,
         ctx["__rows__改进建议表格"] = rows
 
     anchor = f"2026-{quarter}" if theme == "quarterly" else month
+    # 量价分解表（看板方案一延伸）：月度/专题用月度口径分解；季度报告口径不同，不硬凑
+    decomp = [] if theme == "quarterly" else calc.metrics(product, month).decomposition
     with tempfile.TemporaryDirectory() as tmp:
         pngs = make_chart_pngs(charts, product, month, Path(tmp))
         docx_path = out_dir / f"{product}_{anchor}_{label}成本分析报告.docx"
-        render_docx(ctx, MAPPING.section_context(sections), pngs, docx_path)
+        render_docx(ctx, MAPPING.section_context(sections), pngs, docx_path,
+                    decomp=decomp)
 
     pdf_path, pdf_warn = render_pdf(docx_path)
     warnings = [pdf_warn] if pdf_warn else []

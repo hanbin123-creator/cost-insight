@@ -199,7 +199,7 @@ def test_render_product_integrity(built_report):
     assert "@@TBL" not in full
     tbl_text = "\n".join(c.text for t in d.tables for r in t.rows for c in r.cells)
     assert "{{" not in tbl_text and "@@TBL" not in tbl_text
-    assert len(d.tables) == 15          # 模板原有 9 表 + 动态插入 6 表
+    assert len(d.tables) == 16          # 模板原有 9 表 + 动态插入 6 表 + 量价分解表（日志30）
     assert len(d.inline_shapes) == 2    # 趋势图 + 结构图
     # 无 LLM 时来源标注必须保留在报告里（降级透明）
     assert any("模板句·LLM未配置" in p.text for p in d.paragraphs) or \
@@ -209,6 +209,36 @@ def test_render_product_integrity(built_report):
     assert any("原材料名称" in c.text for c in d.tables[0].rows[0].cells) or \
         any("原材料名称" in c.text for t in d.tables for c in t.rows[0].cells)
     assert any("任务编号" in c.text for t in d.tables for c in t.rows[0].cells)
+
+
+def test_monthly_report_decomp_table(built_report):
+    """量价分解表（看板方案一延伸）：锚定 3.1.2 段插入，数字与指标包同源。"""
+    d = docx.Document(built_report["docx"])
+    # 表头契约
+    decomp = [t for t in d.tables
+              if any("价格效应" in c.text for c in t.rows[0].cells)]
+    assert len(decomp) == 1, "量价分解表缺失或重复"
+    tbl = decomp[0]
+    heads = [c.text for c in tbl.rows[0].cells]
+    assert heads == ["材料", "价格(元/kg)", "用量(kg/盒)",
+                     "价格效应(元/盒)", "用量效应(元/盒)", "口径"]
+    # 六行材料全到；稳价假设行口径降级标注；效应带符号 4 位小数
+    body = [[c.text for c in r.cells] for r in tbl.rows[1:]]
+    assert len(body) == 6
+    assert body[0][0] == "金银花" and "→" in body[0][1] and body[0][5] == "行情价分解"
+    assert any(r[5].startswith("稳价假设") for r in body)
+    assert all(r[3] == "—" or r[3][0] in "+-" for r in body)
+    # 位置：3.1.2 标题之后紧邻正文段与分解表
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+    seq = []
+    for el in d.element.body:
+        if el.tag.endswith("}p"):
+            seq.append(Paragraph(el, d).text)
+        elif el.tag.endswith("}tbl"):
+            seq.append("<TABLE>")
+    i = next(i for i, t in enumerate(seq) if "3.1.2" in t and "归因" in t)
+    assert seq[i + 2] == "<TABLE>", f"分解表未紧跟 3.1.2 正文段: {seq[i:i+3]}"
 
 
 def test_llm_track_with_mock(calc):
@@ -448,3 +478,5 @@ def test_quarter_report_render(tmp_path, calc):
     d = docx.Document(out["docx"])
     full = "\n".join(p.text for p in d.paragraphs)
     assert "{{" not in full and "}}" not in full
+    # 季度口径不同：量价分解表不硬凑插入（与 compute.quarter_pack 的设计一致）
+    assert not any("价格效应" in c.text for t in d.tables for c in t.rows[0].cells)
