@@ -33,14 +33,30 @@
       <header class="topbar">
         <h1>{{ ROUTE_TITLES[route.current] }}</h1>
         <div class="controls">
-          <select v-model="store.product" aria-label="产品选择">
-            <option v-for="p in store.products" :key="p" :value="p">{{ p }}</option>
-          </select>
-          <select v-model="store.month" aria-label="月份选择">
-            <option v-for="m in store.months" :key="m" :value="m">{{ m }}</option>
-          </select>
+          <!-- 顶栏切换器方案三：产品分段控件（全部选项平铺，无下拉隐藏） -->
+          <div class="seg" role="group" aria-label="产品选择">
+            <button v-for="p in store.products" :key="p" type="button"
+              :class="{ on: store.product === p }" :aria-pressed="store.product === p"
+              @click="store.product = p">{{ p }}</button>
+          </div>
+          <!-- 月份步进器：‹ › 翻相邻月；中间值仍是原生 select（点按可跨月直跳） -->
+          <div class="mstep">
+            <button class="step" type="button" :disabled="!canPrev" aria-label="上一月"
+              @click="store.month = stepMonth(store.months, store.month, -1)">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2"
+                stroke-linecap="round" style="width:11px;height:11px"><path d="M10 3L5 8l5 5"/></svg>
+            </button>
+            <select v-model="store.month" class="mval" aria-label="月份选择">
+              <option v-for="m in store.months" :key="m" :value="m">{{ m }}</option>
+            </select>
+            <button class="step" type="button" :disabled="!canNext" aria-label="下一月"
+              @click="store.month = stepMonth(store.months, store.month, 1)">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2"
+                stroke-linecap="round" style="width:11px;height:11px"><path d="M6 3l5 5-5 5"/></svg>
+            </button>
+          </div>
           <!-- 条款 4：数据时间戳必标 -->
-          <span class="data-through">数据截至 {{ store.dataThrough || '—' }}</span>
+          <span class="data-through"><span class="dot"></span>数据截至 {{ store.dataThrough || '—' }}</span>
         </div>
       </header>
 
@@ -71,6 +87,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { navigate, ROUTE_TITLES, useRoute, type RouteName } from './router'
 import { initStore, store } from './store'
+import { canStep, stepMonth } from './stepper'
 import DashboardView from './views/DashboardView.vue'
 import BenchmarkView from './views/BenchmarkView.vue'
 import RectifyView from './views/RectifyView.vue'
@@ -79,6 +96,10 @@ import KbView from './views/KbView.vue'
 import AgentDrawer from './components/AgentDrawer.vue'
 
 const route = useRoute()
+
+// 月份步进器端点禁用态（方案三）
+const canPrev = computed(() => canStep(store.months, store.month, -1))
+const canNext = computed(() => canStep(store.months, store.month, 1))
 
 // 侧栏折叠：默认展开，用户可收起；选择持久化到 localStorage（下次进入记住）
 const collapsed = ref(false)
@@ -179,13 +200,42 @@ nav { flex: 1; padding: 12px 10px; display: flex; flex-direction: column; gap: 4
   gap: 10px; padding: 20px 24px 14px;
 }
 .topbar h1 { font-size: 19px; margin: 0; letter-spacing: 0.01em; }
-.controls { display: flex; gap: 8px; align-items: center; }
-.controls select {
-  padding: 8px 14px; border-radius: 10px; border: none;
-  background: var(--card); font-size: 13.5px; box-shadow: var(--shadow);
-  color: var(--text-num); cursor: pointer;
+.controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+/* 顶栏切换器方案三（选型 V2 精修）：分段控件 + 月份步进器，选项全部平铺无下拉隐藏 */
+.seg {
+  display: flex; background: #e9e5f5; border-radius: 13px; padding: 3px;
+  box-shadow: inset 0 1px 3px rgba(59, 47, 117, 0.1);
 }
-.data-through { font-size: 12px; color: var(--text-label); }
+.seg button {
+  border: none; background: none; padding: 7px 15px; border-radius: 10px;
+  font-size: 12.5px; color: var(--text-unit); cursor: pointer; white-space: nowrap;
+  letter-spacing: 0.02em; transition: color 0.15s ease;
+}
+.seg button:not(.on):hover { color: var(--nav); }
+.seg button.on {
+  background: #fff; color: var(--nav); font-weight: 700;
+  box-shadow: 0 1px 2px rgba(59, 47, 117, 0.14), 0 4px 10px rgba(59, 47, 117, 0.1);
+}
+.mstep {
+  display: flex; align-items: center; gap: 2px; background: #e9e5f5; border-radius: 13px;
+  padding: 3px; box-shadow: inset 0 1px 3px rgba(59, 47, 117, 0.1);
+}
+.mstep .step {
+  border: none; background: none; width: 27px; height: 28px; border-radius: 9px;
+  color: var(--nav); cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.mstep .step:hover:not(:disabled) { background: rgba(255, 255, 255, 0.75); }
+.mstep .step:disabled { color: rgba(59, 47, 117, 0.25); cursor: default; }
+.mstep .mval {
+  appearance: none; border: none; background: none; font-size: 13px; font-weight: 700;
+  color: var(--nav); padding: 3px 9px; border-radius: 9px; cursor: pointer;
+  font-variant-numeric: tabular-nums; text-align: center;
+}
+.mstep .mval:hover { background: rgba(255, 255, 255, 0.75); }
+.data-through {
+  font-size: 11px; color: var(--text-label); display: inline-flex; align-items: center; gap: 5px;
+}
+.data-through .dot { width: 5px; height: 5px; border-radius: 50%; background: #7fb89e; }
 .backend-err {
   margin: 0 24px 10px; padding: 10px 16px; border-radius: 12px; font-size: 12px;
   background: var(--sem-alert-bg); border: none; color: #922b21;
