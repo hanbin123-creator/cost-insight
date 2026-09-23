@@ -111,6 +111,20 @@ export interface Cause {
   citations: string[]
 }
 
+/** 材料量价分解行（后端代码回填，模型不可改；排版选型方案一的表格数据源） */
+export interface DecompRow {
+  material: string
+  method: string              // market_price / stable_price_assumption / uncovered
+  price_prev: number | null
+  price_curr: number | null
+  qty_prev: number | null
+  qty_curr: number | null
+  price_effect: number | null
+  qty_effect: number | null
+  covered: boolean
+  note: string | null
+}
+
 export interface Verification {
   verdict: 'pass' | 'auto_fixed' | 'rejected'
   passed: boolean
@@ -125,6 +139,7 @@ export interface AttributionResp {
   summary: string
   causes: Cause[]
   suggestions: string[]
+  decomposition?: DecompRow[]   // 旧 fixture/季度场景可缺省，前端按空数组处理
   verification: Verification
 }
 

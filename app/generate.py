@@ -203,5 +203,6 @@ def generate_attribution(calc: CostCalculator, retriever: Retriever,
         # 系统永不因模型失误而崩溃或静默放行
         report = AttributionReport(product=product, month=month, summary="",
                                    causes=[], suggestions=[])
+    report.decomposition = metrics.decomposition   # 代码回填：分解表数字与指标包同源，模型不可改
     report.verification = v
     return report

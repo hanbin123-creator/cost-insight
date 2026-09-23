@@ -1,0 +1,60 @@
+{
+ "product": "银黄口服液",
+ "month": "2026-05",
+ "summary": "银黄口服液 2026-05 单位成本 11.21 元/盒，环比 +2.8%，同比 +4.7%，较预算偏差 +5.8%。",
+ "causes": [
+  {
+   "title": "金银花行情上涨推高直接材料成本",
+   "detail": "直接材料 7.3 元/盒，环比 +3.1%，对总成本变动贡献 71.0%。告警：金银花行情价年初至当月累计+10.4%，超出±10%累计阈值。配方中金银花为君药，见《产品配方文档_银黄口服液.pdf》p1\"2.2 (10ml)\"。",
+   "figures": [
+    11.21,
+    2.8,
+    4.7,
+    5.8,
+    7.3,
+    3.1,
+    71.0,
+    10.4,
+    10.0,
+    2.2
+   ],
+   "citations": [
+    "产品配方文档_银黄口服液#004"
+   ]
+  }
+ ],
+ "suggestions": [
+  "核查金银花采购合同是否触发调价条款，适时锁价备货",
+  "跟踪黄芩提取物单耗波动，排查提取工序收率"
+ ],
+ "decomposition": [
+  {"material": "金银花", "method": "market_price", "price_prev": 118.0, "price_curr": 130.3,
+   "qty_prev": 0.0256, "qty_curr": 0.0257, "price_effect": 0.3151, "qty_effect": 0.0118,
+   "covered": true, "note": "按市场行情价分解"},
+  {"material": "黄芩提取物", "method": "market_price", "price_prev": 46.0, "price_curr": 46.5,
+   "qty_prev": 0.0467, "qty_curr": 0.0466, "price_effect": 0.0233, "qty_effect": -0.0046,
+   "covered": true, "note": "按市场行情价分解"},
+  {"material": "蔗糖", "method": "market_price", "price_prev": 6.8, "price_curr": 6.85,
+   "qty_prev": 0.0652, "qty_curr": 0.0652, "price_effect": 0.0033, "qty_effect": 0.0,
+   "covered": true, "note": "按市场行情价分解"},
+  {"material": "苯甲酸钠", "method": "market_price", "price_prev": 21.8, "price_curr": 22.0,
+   "qty_prev": 0.007, "qty_curr": 0.007, "price_effect": 0.0014, "qty_effect": 0.0,
+   "covered": true, "note": "按市场行情价分解"},
+  {"material": "纯化水", "method": "stable_price_assumption", "price_prev": null, "price_curr": null,
+   "qty_prev": null, "qty_curr": null, "price_effect": 0.0, "qty_effect": 0.0,
+   "covered": false, "note": "行情未覆盖的稳价辅料，假设价格不变，变动全部按用量差异处理（假设口径）"},
+  {"material": "包装材料（盒+说明书）", "method": "stable_price_assumption", "price_prev": null,
+   "price_curr": null, "qty_prev": null, "qty_curr": null, "price_effect": 0.0, "qty_effect": 0.005,
+   "covered": false, "note": "行情未覆盖的稳价辅料，假设价格不变，变动全部按用量差异处理（假设口径）"}
+ ],
+ "verification": {
+  "verdict": "auto_fixed",
+  "passed": true,
+  "fixed": [
+   "causes[0]《金银花行情上涨推高直接材料成本》 自动补全声明: 10.4（数字真实，原漏报）",
+   "causes[0]《金银花行情上涨推高直接材料成本》 自动补全声明: 10.0（数字真实，原漏报）",
+   "causes[0]《金银花行情上涨推高直接材料成本》 自动补全声明: 2.2（数字真实，原漏报）"
+  ],
+  "errors": []
+ }
+}

@@ -29,6 +29,37 @@
               <span v-else>{{ t.text }}</span>
             </template>
           </p>
+
+          <!-- 排版选型方案一：材料量价分解表格（代码回填，与正文数字同源） -->
+          <div v-if="report.decomposition && report.decomposition.length" class="decomp">
+            <div class="decomp-head">
+              材料量价分解明细
+              <span class="decomp-src">代码计算 · 与正文数字同源</span>
+            </div>
+            <table class="decomp-table">
+              <thead>
+                <tr>
+                  <th class="l">材料</th><th>价格 (元/kg)</th><th>用量 (kg/盒)</th>
+                  <th>价格效应</th><th>用量效应</th><th class="l">口径</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="d in report.decomposition" :key="d.material">
+                  <td class="l mname">{{ d.material }}</td>
+                  <td class="num" :class="{ flat: d.price_prev === null }">
+                    {{ fmtTransition(d.price_prev, d.price_curr, transitionPlaceholder(d)) }}
+                  </td>
+                  <td class="num" :class="{ flat: d.qty_prev === null }">
+                    {{ d.qty_prev === null ? '—' : fmtTransition(d.qty_prev, d.qty_curr, '—') }}
+                  </td>
+                  <td class="num" :class="effClass(d.price_effect)">{{ fmtEffect(d.price_effect) }}</td>
+                  <td class="num" :class="effClass(d.qty_effect)">{{ fmtEffect(d.qty_effect) }}</td>
+                  <td class="l src" :class="{ market: d.covered }">{{ methodLabel(d) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
           <div v-for="(c, ci) in report.causes" :key="ci" class="cause">
             <h4>{{ ci + 1 }}. {{ c.title }}</h4>
             <p>
@@ -76,6 +107,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { findFigIndex, tokenizeFigures } from '../figures'
+import { effClass, fmtEffect, fmtTransition, methodLabel, transitionPlaceholder } from '../decomp'
 import type { AttributionResp } from '../types'
 
 const props = defineProps<{
@@ -133,6 +165,32 @@ h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--text-unit
 @container (max-width: 700px) { .attr-cols { grid-template-columns: 1fr; } }
 
 .attr-text .summary { font-weight: 600; color: var(--text-num); margin-top: 0; }
+
+/* 量价分解表格（排版选型方案一）：效应负=绿（降本），正=红（升本），与热力图同口径 */
+.decomp { margin: 10px 0 4px; border: 1px solid rgba(93, 109, 126, 0.14); border-radius: 10px; overflow: hidden; }
+.decomp-head {
+  font-size: 12px; font-weight: 600; color: var(--text-unit);
+  padding: 8px 12px; background: rgba(93, 109, 126, 0.05);
+  display: flex; align-items: baseline; gap: 8px;
+}
+.decomp-src { font-size: 11px; font-weight: 400; color: var(--text-label); }
+.decomp-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.decomp-table th {
+  padding: 7px 10px; font-size: 11px; font-weight: 600; color: var(--text-label);
+  border-bottom: 1.5px solid rgba(93, 109, 126, 0.16); text-align: right; white-space: nowrap;
+}
+.decomp-table th.l, .decomp-table td.l { text-align: left; }
+.decomp-table td {
+  padding: 7px 10px; border-bottom: 1px solid rgba(93, 109, 126, 0.07);
+  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.decomp-table tr:last-child td { border-bottom: none; }
+.decomp-table .mname { font-weight: 600; color: var(--text-num); }
+.decomp-table .dn { color: #3d8a6f; font-weight: 600; }
+.decomp-table .up { color: #c05a4b; font-weight: 600; }
+.decomp-table .flat { color: var(--text-label); font-weight: 400; }
+.decomp-table .src { font-size: 11px; color: var(--text-label); }
+.decomp-table .src.market { color: var(--primary); }
 .cause h4 { margin: 12px 0 4px; color: var(--text-unit); font-size: 13.5px; }
 .cause p { margin: 0; }
 .fixed { margin-top: 10px; font-size: 12px; color: #b9770e; }

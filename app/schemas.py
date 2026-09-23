@@ -106,6 +106,8 @@ class AttributionReport(BaseModel):
     summary: str                     # 总起段（单位成本/环比/同比/预算偏差已由代码给数）
     causes: list[Cause]
     suggestions: list[str]
+    decomposition: list[Decomposition] = []   # 材料量价分解明细：代码侧回填（前端表格化展示），
+                                              # 模型输出中的同名字段被 parse_report 丢弃，永不采信
     verification: dict = {}          # {"passed": bool, "errors": [...]}
 
 

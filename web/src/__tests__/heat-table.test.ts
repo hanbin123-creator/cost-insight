@@ -5,7 +5,7 @@ import {
 } from '../heatTable'
 import { CT } from '../charts/options'
 import type { HeatmapResp } from '../types'
-import heatmap from '../../fixtures/heatmap.json'
+import heatmap from '../../public/fixtures/heatmap.json'
 
 const h = heatmap as HeatmapResp
 

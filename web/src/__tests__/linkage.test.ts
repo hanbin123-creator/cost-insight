@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { CT, trendOption } from '../charts/options'
 import { alertKey, matchTask, momTone } from '../alerts'
 import type { Alert, RectifyTask, SeriesResp } from '../types'
-import series from '../../fixtures/series_yinhuang.json'
+import series from '../../public/fixtures/series_yinhuang.json'
 
 const s = series as SeriesResp
 

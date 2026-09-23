@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { CT, elementColor, structureOption, trendOption } from '../charts/options'
 import type { SeriesResp, StructureResp } from '../types'
-import series from '../../fixtures/series_yinhuang.json'
-import structure from '../../fixtures/structure_yinhuang_01.json'
+import series from '../../public/fixtures/series_yinhuang.json'
+import structure from '../../public/fixtures/structure_yinhuang_01.json'
 
 describe('图表 token 色彩纪律（条款 6 + D7 Tableau 10 分类色）', () => {
   it('趋势图：单位成本=深海军蓝主角，要素线=分类色且跨图一致', () => {

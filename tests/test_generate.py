@@ -50,6 +50,25 @@ def test_generate_happy_path(env):
     assert report.causes and report.suggestions
 
 
+def test_decomposition_backfilled_by_code(env):
+    """表格化归因（排版选型方案一）：分解明细由代码随报告回填，
+    与指标包同源；模型输出里塞同名字段一律丢弃，永不采信。"""
+    calc, retriever = env
+    canned, metrics, _ = _good_canned(calc, retriever)
+    # 模型试图在 JSON 里注入伪造分解表
+    injected = json.loads(canned)
+    injected["decomposition"] = [{"material": "假材料", "price_effect": 99.9}]
+    report = generate_attribution(calc, retriever,
+                                  MockLLM(json.dumps(injected, ensure_ascii=False)),
+                                  "银黄口服液", "2026-05")
+    assert report.decomposition == metrics.decomposition   # 代码原值，非注入值
+    assert report.decomposition                            # 月度包非空
+    assert all(d.material != "假材料" for d in report.decomposition)
+    # parse_report 层面同样不采信
+    parsed = parse_report(json.dumps(injected), "银黄口服液", "2026-05")
+    assert parsed.decomposition == []
+
+
 def test_fabricated_number_detected(env):
     """负例：模型声明了产物包里不存在的数字 → 判幻觉。"""
     calc, retriever = env

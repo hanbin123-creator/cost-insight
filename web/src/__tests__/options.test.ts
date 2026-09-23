@@ -6,11 +6,11 @@ import {
 import type {
   ForecastResp, SeriesResp, StructureResp, WaterfallResp,
 } from '../types'
-import forecast from '../../fixtures/forecast_yinhuang.json'
-import series from '../../fixtures/series_yinhuang.json'
-import structure from '../../fixtures/structure_yinhuang_01.json'
-import waterfallNeg from '../../fixtures/waterfall_liuwei_03_negative.json'
-import waterfall from '../../fixtures/waterfall_yinhuang_05.json'
+import forecast from '../../public/fixtures/forecast_yinhuang.json'
+import series from '../../public/fixtures/series_yinhuang.json'
+import structure from '../../public/fixtures/structure_yinhuang_01.json'
+import waterfallNeg from '../../public/fixtures/waterfall_liuwei_03_negative.json'
+import waterfall from '../../public/fixtures/waterfall_yinhuang_05.json'
 
 describe('trendOption', () => {
   it('4 条线（单位成本+三要素），每条 6 个点', () => {
