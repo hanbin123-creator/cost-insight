@@ -666,6 +666,13 @@ def build_report(calc: CostCalculator, retriever, llm, product: str, month: str,
     返回 {docx, pdf, warnings, verification, sections_source, theme}。"""
     if theme not in _THEME_LABEL:
         raise ValueError(f"未知报告主题: {theme}（可选 {sorted(_THEME_LABEL)}）")
+    if not TEMPLATE.exists():
+        # 官方模板属赛题资源不入公开仓库：Docker 启动时 entrypoint 会从数据源
+        # 复制；本地开发需手动放入。此处给人话报错而非 DocxTemplate 的堆栈。
+        raise FileNotFoundError(
+            f"报告模板缺失：{TEMPLATE}。官方模板属赛题保密资源，不随仓库分发——"
+            "请将数据包 04_报告模板/月度成本分析报告模板.docx 复制为 "
+            "assets/report_template.docx（Docker 部署由 entrypoint 自动完成）。")
     label = _THEME_LABEL[theme]
     charts = ChartBuilder(calc)
     ctx = ReportContextBuilder(calc).build(product, month, theme=theme, quarter=quarter)

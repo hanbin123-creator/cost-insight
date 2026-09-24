@@ -13,3 +13,6 @@ __pycache__/
 data/kb/
 reports/
 docs/e2e/
+
+# 官方报告模板属赛题保密资源，不入库（Docker 由 entrypoint 从数据源复制）
+assets/report_template.docx

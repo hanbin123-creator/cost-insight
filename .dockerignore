@@ -8,6 +8,7 @@ reports/
 cache/
 data/cost.db
 data/kb/
+assets/report_template.docx
 web/node_modules/
 web/dist/
 tests/
