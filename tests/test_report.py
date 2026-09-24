@@ -297,6 +297,10 @@ def test_llm_track_with_mock(calc):
     assert v["verdict"] in ("pass", "auto_fixed")
     assert all(s.source == "llm" for s in sections.values())
     assert suggestions == ["核查金银花采购合同调价条款"]
+    # 出处落地（修复：citations 过校验后必须渲染到正文，读者可见）
+    for s in sections.values():
+        assert "（出处：《" in s.text and f"》p{hit.page}" in s.text
+        assert hit.doc_name in s.text
 
 
 def test_llm_fabrication_rejected(calc):

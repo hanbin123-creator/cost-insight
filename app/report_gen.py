@@ -280,4 +280,29 @@ def generate_report_sections(calc: CostCalculator, retriever: Retriever,
             or ["维持现行成本管控节奏，持续跟踪行情"]
         v["llm_rejected_fallback"] = True
         v["fallback"] = "template_sections"
+    else:
+        _attach_citations(sections, knowledge)
     return sections, suggestions, v
+
+
+def _attach_citations(sections: dict[str, "SectionResult"], knowledge: "KnowledgePack") -> None:
+    """把校验通过的 chunk_id 声明解析成人读出处，行内追加到段尾。
+
+    校验器只保证 citations 字段合法，渲染层此前不落地——读者在报告里看不到
+    出处（修复 3 的遗留缺口）。此处在校验通过后追加，追加内容不参与再校验
+    （页码是知识库元数据，非数据证据）。模板句/被拦截轨不经过本函数。
+    """
+    by_id = {h.chunk_id: h for h in knowledge.hits}
+    for s in sections.values():
+        if s.source != "llm" or not s.citations:
+            continue
+        seen, parts = set(), []
+        for cid in s.citations:
+            h = by_id.get(cid)
+            if h is None or cid in seen:
+                continue          # 校验已保证 cid 合法；重复引用去重保序
+            seen.add(cid)
+            sec = f'"{h.section}"' if h.section else ""
+            parts.append(f"《{h.doc_name}》p{h.page}{sec}")
+        if parts and "出处：" not in s.text:
+            s.text = s.text.rstrip() + f"（出处：{'；'.join(parts)}）"
