@@ -5,6 +5,13 @@
 > 2026 年第二届重庆市 AI 大模型创新应用大赛 · 创灵境赛题
 > 设计哲学：**大模型永不算数**——所有数字由代码计算（SQLite/Pandas），大模型只做意图理解与文字表达，数字与文字之间用 schema 闸门与自动对账隔离。
 
+## 第 0 步：克隆并进入项目目录（后面所有命令都在这个目录里执行）
+
+```bash
+git clone https://github.com/hanbin123-creator/cost-insight.git
+cd cost-insight        # ← 漏了这一步，后面所有命令都会报"找不到文件"
+```
+
 ## 一键启动（Docker）
 
 前置条件：Docker Desktop；考题数据包放在本仓库**同级目录**（`../创灵境_考题模拟数据`，保密数据不入库）。
@@ -41,13 +48,16 @@ FastAPI/Pandas/Vue/ECharts 等依赖）的来源与许可证见 [NOTICE.md](NOTI
 
 ## 本地开发启动
 
+> 确认终端已在 `cost-insight/` 目录内（第 0 步）。前端需**另开一个终端**窗口。
+
 ```bash
 pip install -r requirements.txt
-python -m uvicorn app.api:app --host 127.0.0.1 --port 8000     # 后端
+python -m uvicorn app.api:app --host 127.0.0.1 --port 8000     # 后端（此窗口保持开启）
 
-cd web && npm ci && npm run dev                                # 前端（5173，代理至 8000）
+# 另开一个终端：
+cd cost-insight/web && npm ci && npm run dev                   # 前端（5173，代理至 8000）
 
-# 整改闭环需要官方 mock RPA（另开终端）：
+# 整改闭环需要官方 mock RPA（再开一个终端）：
 cd ../创灵境_考题模拟数据/05_RPA接口文档 && python mock_rpa_server.py   # 8090
 ```
 
