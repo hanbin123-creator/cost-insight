@@ -122,7 +122,10 @@ def _verify_sections(sections: dict[str, SectionResult], suggestions: list[str],
                             figures=list(suggestion_figures), citations=[]))
     pseudo = AttributionReport(product=metrics.product, month=metrics.month,
                                summary="", causes=causes, suggestions=[])
-    v = verify_report(pseudo, metrics, knowledge, extra_allow=extra_allow)
+    # 引用闸门只对 LLM 轨生效：模板句本就不引用知识块，强制引用是造假
+    require_citation = any(s.source == "llm" for s in sections.values())
+    v = verify_report(pseudo, metrics, knowledge, extra_allow=extra_allow,
+                      require_citation=require_citation)
     # 自愈的 figures 回写各段（auto_fixed 的补全声明要落到展示层）
     for name, cause in zip(list(sections) + (["改进建议"] if suggestions else []), causes):
         if name in sections:

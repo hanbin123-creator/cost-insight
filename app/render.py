@@ -12,6 +12,7 @@ None 显示为 "—"（显示格式化豁免计算禁令，数值本身已在 re
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -270,7 +271,8 @@ def render_docx(ctx: dict, sections: dict[str, SectionResult],
             text = para.text
             for name, headers in TABLE_HEADERS.items():
                 if f"@@TBL:{name}@@" in text:
-                    _insert_table_after(doc, para, headers, ctx[f"__rows__{name}"])
+                    _insert_table_after(doc, para, headers, ctx[f"__rows__{name}"],
+                                        widths_cm=_TABLE_WIDTHS.get(name))
                     if name == "近6个月成本趋势表格" and "trend" in pngs:
                         _insert_picture_after(doc, para._p, pngs["trend"])
                     para._p.getparent().remove(para._p)
@@ -298,10 +300,251 @@ def render_docx(ctx: dict, sections: dict[str, SectionResult],
                                         font_pt=9)
                     break
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        _enable_update_fields(doc)
         doc.save(str(out_path))
 
 
+# 动态表固定列宽（cm）：长文本表 autofit 会挤成"每行几个字"并跨页断裂，
+# 固定宽 + 9pt 密排是实测后的版式结论（分解表同款教训，见日志30）
+_TABLE_WIDTHS = {
+    # 序号 / 建议事项 / 责任部门 / 优先级 / 预期效果 / 建议完成时间
+    "改进建议表格": [1.2, 5.2, 2.0, 1.6, 3.6, 2.4],
+    # 任务编号 / 标题 / 责任人 / 优先级 / 来源 / 截止时间
+    "整改任务表格": [2.6, 4.6, 1.8, 1.4, 3.4, 2.2],
+}
+
+
+def _enable_update_fields(doc) -> None:
+    """打开/转换时刷新域：目录页码与页脚"第X页 共N页"域的缓存值随之重建。
+    模板域结果缓存停留在模板原页数（如"共44页"），内容增删页后不刷新即穿帮。"""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    settings = doc.settings.element
+    if settings.find(qn("w:updateFields")) is None:
+        el = OxmlElement("w:updateFields")
+        el.set(qn("w:val"), "true")
+        settings.append(el)
+
+
 # ---------- PDF 转换（四层稳定性设计） ----------
+
+def _outline_headings(doc) -> list[tuple[int, str]]:
+    """提取大纲级别 0-2 的标题（模板用 outlineLvl 而非 Heading 样式）。
+    "整体解决方案"是页眉横幅文本，不是目录条目，剔除。"""
+    from docx.oxml.ns import qn
+    out = []
+    for p in doc.paragraphs:
+        text = " ".join(p.text.split())
+        if not text or text == "整体解决方案":
+            continue
+        pPr = p._p.pPr
+        if pPr is None:
+            continue
+        lvl = pPr.find(qn("w:outlineLvl"))
+        if lvl is None:
+            continue
+        lv = int(lvl.get(qn("w:val")))
+        if lv <= 2:
+            out.append((lv + 1, text))
+    return out
+
+
+def _heading_pages(pdf_path: Path, headings: list[tuple[int, str]]) -> tuple[list[tuple[int, str, int]], list[str]]:
+    """在 PDF 逐页文本中按文档顺序定位标题页码（空白归一化后包含匹配）。
+    返回 (条目(级别,标题,物理页码), 逐页文本)——逐页文本供页码口径换算复用。"""
+    import pypdfium2 as pdfium
+    pdf = pdfium.PdfDocument(str(pdf_path))
+    try:
+        pages = ["".join(pdf[i].get_textpage().get_text_range().split())
+                 for i in range(len(pdf))]
+        raw = [pdf[i].get_textpage().get_text_range() for i in range(len(pdf))]
+    finally:
+        pdf.close()  # Windows 文件锁：不关句柄会卡死第二遍转换的产物覆盖
+    res, start = [], 0
+    for lv, text in headings:
+        key = "".join(text.split())
+        found = next((i + 1 for i in range(start, len(pages)) if key in pages[i]),
+                     None)
+        if found is None:  # 顺序定位失败则全局兜底，仍失败才放弃该条目
+            found = next((i + 1 for i in range(len(pages)) if key in pages[i]),
+                         None)
+        if found is not None:
+            res.append((lv, text, found))
+            start = found - 1
+    return res, raw
+
+
+def _write_static_toc(doc, entries: list[tuple[int, str, int]]) -> int:
+    """把模板 TOC 域（缓存停留在"右键更新域"占位文本）替换为静态目录行：
+    标题 + 点线前导 + 右对齐页码。LibreOffice headless 转换不刷新 TOC 域，
+    两遍转换是确定性正解；footer 的页数域由 updateFields 照常动态刷新。"""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    toc_p = None
+    for p in doc.paragraphs:
+        if p._p.findall(".//" + qn("w:instrText")) and any(
+                "TOC" in (t.text or "")
+                for t in p._p.findall(".//" + qn("w:instrText"))):
+            toc_p = p._p
+            break
+    if toc_p is None or not entries:
+        return 0
+    parent = toc_p.getparent()
+    idx = list(parent).index(toc_p)
+    parent.remove(toc_p)
+    for lv, text, page in reversed(entries):
+        p = OxmlElement("w:p")
+        pPr = OxmlElement("w:pPr")
+        tabs = OxmlElement("w:tabs")
+        tab = OxmlElement("w:tab")
+        tab.set(qn("w:val"), "right")
+        tab.set(qn("w:leader"), "dot")
+        tab.set(qn("w:pos"), "8500")
+        tabs.append(tab)
+        pPr.append(tabs)
+        if lv > 1:
+            ind = OxmlElement("w:ind")
+            ind.set(qn("w:left"), str(360 * (lv - 1)))
+            pPr.append(ind)
+        sp = OxmlElement("w:spacing")
+        sp.set(qn("w:after"), "60")
+        pPr.append(sp)
+        p.append(pPr)
+        r = OxmlElement("w:r")
+        if lv == 1:
+            rPr = OxmlElement("w:rPr")
+            rPr.append(OxmlElement("w:b"))
+            r.append(rPr)
+        t = OxmlElement("w:t")
+        t.set(qn("xml:space"), "preserve")
+        t.text = text
+        r.append(t)
+        r.append(OxmlElement("w:tab"))
+        t2 = OxmlElement("w:t")
+        t2.text = str(page)
+        r.append(t2)
+        p.append(r)
+        parent.insert(idx, p)
+    return len(entries)
+
+
+def _footer_total_mismatch(pdf_path: Path) -> tuple[int, int | None]:
+    """返回 (实际页数, 页脚声明的总页数)。页脚无"共N页"则 declared=None。"""
+    import pypdfium2 as pdfium
+    pdf = pdfium.PdfDocument(str(pdf_path))
+    try:
+        actual = len(pdf)
+        m = re.search(r"共\s*(\d+)\s*页",
+                      pdf[actual - 1].get_textpage().get_text_range())
+        return actual, (int(m.group(1)) if m else None)
+    finally:
+        pdf.close()
+
+
+def _freeze_numpages(doc, total: int) -> int:
+    """NUMPAGES 域在分节重排页码下 LibreOffice 会算错（实测物理 10 页显示
+    "共11页"）——校验不符时将 NUMPAGES 域冻结为实测静态值；PAGE 域保持动态。
+    返回冻结的域个数。"""
+    from docx.oxml.ns import qn
+    patched = 0
+    seen = set()
+    for section in doc.sections:
+        for footer in (section.footer, section.first_page_footer,
+                       section.even_page_footer):
+            if id(footer._element) in seen:
+                continue
+            seen.add(id(footer._element))
+            # 页码域可能嵌在页脚文本框（w:txbxContent）内——footer.paragraphs
+            # 够不到，必须全树迭代（实机调试发现，见开发日志31）
+            for p in footer._element.iter(qn("w:p")):
+                instrs = [t for t in p.findall(".//" + qn("w:instrText"))
+                          if "NUMPAGES" in (t.text or "")]
+                if not instrs:
+                    continue
+                runs = p.findall(qn("w:r"))
+                # 按域分段：begin..end 为一个段；NUMPAGES 段整体换成静态文本 run，
+                # 其余域（如 PAGE）原样保留——页脚文本框内两类域共存，不能误拆
+                result, i = [], 0
+                while i < len(runs):
+                    r = runs[i]
+                    fld = r.find(qn("w:fldChar"))
+                    if fld is not None and fld.get(qn("w:fldCharType")) == "begin":
+                        seg, j = [r], i + 1
+                        while j < len(runs):
+                            seg.append(runs[j])
+                            f2 = runs[j].find(qn("w:fldChar"))
+                            if f2 is not None and f2.get(qn("w:fldCharType")) == "end":
+                                break
+                            j += 1
+                        instr = " ".join(
+                            (x.find(qn("w:instrText")).text or "") for x in seg
+                            if x.find(qn("w:instrText")) is not None)
+                        if "NUMPAGES" in instr:
+                            rPr_src = next((x.find(qn("w:rPr")) for x in seg
+                                            if x.find(qn("w:t")) is not None), None)
+                            r_new = p.makeelement(qn("w:r"), {})
+                            if rPr_src is not None:
+                                r_new.append(rPr_src)
+                            t = r_new.makeelement(qn("w:t"), {})
+                            t.text = str(total)
+                            r_new.append(t)
+                            result.append(r_new)
+                            patched += 1
+                        else:
+                            result.extend(seg)
+                        i = j + 1
+                    else:
+                        result.append(r)
+                        i += 1
+                for r in runs:
+                    p.remove(r)
+                for r in result:
+                    p.append(r)
+    return patched
+
+
+def _render_pdf_with_toc(docx_path: Path) -> tuple[Path | None, str | None, int]:
+    """两遍半转换：首遍测标题实际页码 → 静态目录回填 docx → 终遍出正式 PDF，
+    末页校验页脚总数（NUMPAGES 域在分节重排页码下会算错，不符则冻结为静态值
+    再转一遍）。任一步失败降级保留上一遍结果，版式问题永不阻塞出货。
+    返回 (pdf, warn, 目录条数)。"""
+    first, warn1 = render_pdf(docx_path)
+    if first is None:
+        return None, warn1, 0
+    try:
+        doc = docx.Document(str(docx_path))
+        entries, page_texts = _heading_pages(first, _outline_headings(doc))
+        # 页码口径换算：前置页（封面/编制/目录）无页脚编号，正文从"第 1 页"
+        # 重起——目录页码必须与读者看到的页脚编号一致，而非物理页码
+        f0 = next((i + 1 for i, t in enumerate(page_texts)
+                   if re.search(r"第\s*1\s*页", t)), None)
+        if f0:
+            entries = [(lv, t, p - f0 + 1) for lv, t, p in entries if p >= f0]
+        if not entries:
+            return first, warn1, 0
+        n = _write_static_toc(doc, entries)
+        doc.save(str(docx_path))
+    except Exception as e:  # 目录回填失败：首遍 PDF 原样交付
+        return first, f"目录回填失败（{e}），PDF 为首遍无目录版本", 0
+    second, warn2 = render_pdf(docx_path)
+    if second is None:
+        return first, f"目录版转换失败（{warn2}），PDF 为首遍无目录版本", 0
+    if Path(first) != Path(second):
+        Path(first).unlink(missing_ok=True)  # 同名同路径时 second 即最终版，勿删
+    # 末遍校验：页脚"共N页"与实际页数不符 → NUMPAGES 冻结为静态值再转一遍
+    actual, declared = _footer_total_mismatch(second)
+    if declared is not None and declared != actual:
+        doc = docx.Document(str(docx_path))
+        if _freeze_numpages(doc, actual):
+            doc.save(str(docx_path))
+            third, warn3 = render_pdf(docx_path)
+            if third is not None:
+                a2, d2 = _footer_total_mismatch(third)
+                if d2 == a2:
+                    return third, warn1, n
+                return third, (warn1 or "") + f"；页脚总数仍不符({d2}/{a2})", n
+        return second, (warn1 or "") + f"；页脚总数不符({declared}/{actual})，冻结失败", n
+    return second, warn1, n
 _CONVERT_TIMEOUT = 60.0   # 单次硬超时：实测正常转换 5-15s，60s 已 4 倍冗余
 _POLL_INTERVAL = 2.0      # 文件守望者轮询间隔
 
@@ -448,8 +691,9 @@ def build_report(calc: CostCalculator, retriever, llm, product: str, month: str,
         render_docx(ctx, MAPPING.section_context(sections), pngs, docx_path,
                     decomp=decomp)
 
-    pdf_path, pdf_warn = render_pdf(docx_path)
+    pdf_path, pdf_warn, toc_n = _render_pdf_with_toc(docx_path)
     warnings = [pdf_warn] if pdf_warn else []
     return {"docx": str(docx_path), "pdf": str(pdf_path) if pdf_path else None,
             "warnings": warnings, "verification": verification, "theme": theme,
+            "toc_entries": toc_n,
             "sections_source": {k: v.source for k, v in sections.items()}}

@@ -163,8 +163,42 @@ def test_context_coverage_and_values(calc):
     assert len(ctx["__rows__近6个月成本趋势表格"]) == 5
     ctx6 = ReportContextBuilder(calc).build("银黄口服液", "2026-06")
     assert len(ctx6["__rows__近6个月成本趋势表格"]) == 6
-    # 整改任务：告警月份有任务，无告警月份为"无任务"占位行
-    assert ctx["__rows__整改任务表格"][0][0].startswith("ZG-2026-05")
+    # 整改任务编号与 dispatch_log 联动（D24 教训：幂等链路测试自带清场——
+    # 先暂存并清空本产品本月的既有记录，结束后恢复）
+    from app import storage
+    from app.act import _log_dispatch, assemble_tasks
+    conn = storage.connect()
+    try:
+        saved = conn.execute(
+            "SELECT * FROM dispatch_log WHERE product=? AND month=?",
+            ("银黄口服液", "2026-05")).fetchall()
+        conn.execute("DELETE FROM dispatch_log WHERE product=? AND month=?",
+                     ("银黄口服液", "2026-05"))
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        ctx0 = ReportContextBuilder(calc).build("银黄口服液", "2026-05")
+        # 未下发时编号如实标"待下发"，不虚构
+        assert ctx0["__rows__整改任务表格"][0][0] == "待下发"
+        # 任务身份统一：dispatch_log 有已发任务时，报告编号 == RPA task_id
+        alerts = calc.metrics("银黄口服液", "2026-05").alerts
+        task = assemble_tasks("银黄口服液", "2026-05", alerts)[0]
+        _log_dispatch(task, {"ok": True}, {"ok": True})
+        ctx2 = ReportContextBuilder(calc).build("银黄口服液", "2026-05")
+        ids = [r[0] for r in ctx2["__rows__整改任务表格"]]
+        assert task.task_id in ids, f"报告任务编号未与 RPA 身份统一: {ids}"
+        assert "待下发" not in ids
+    finally:
+        conn = storage.connect()
+        try:
+            conn.execute("DELETE FROM dispatch_log WHERE product=? AND month=?",
+                         ("银黄口服液", "2026-05"))
+            conn.executemany("INSERT OR REPLACE INTO dispatch_log VALUES (?,?,?,?,?,?,?)",
+                             saved)
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def test_template_sections_pass_verification(calc):
@@ -247,8 +281,11 @@ def test_llm_track_with_mock(calc):
     from app.llm import MockLLM
     metrics = calc.metrics("银黄口服液", "2026-05")
     mat = metrics.elements["直接材料"]
+    hit = Retriever().multi_search(
+        __import__("app.prompts", fromlist=["build_queries"])
+        .build_queries("银黄口服液", "2026-05", metrics), top_k=6).hits[0]
     secs = {name: {"text": f"直接材料 {mat.current} 元/盒，环比 {mat.mom_pct:+.1f}%。",
-                   "figures": [mat.current, mat.mom_pct], "citations": []}
+                   "figures": [mat.current, mat.mom_pct], "citations": [hit.chunk_id]}
             for name in ("section.material_attribution", "section.anomaly",
                          "section.diff_structure", "section.diff_attribution",
                          "section.highlights", "section.concerns")}
@@ -480,3 +517,25 @@ def test_quarter_report_render(tmp_path, calc):
     assert "{{" not in full and "}}" not in full
     # 季度口径不同：量价分解表不硬凑插入（与 compute.quarter_pack 的设计一致）
     assert not any("价格效应" in c.text for t in d.tables for c in t.rows[0].cells)
+
+
+def test_report_layout_fields(built_report):
+    """版式修复（外部评审）：updateFields 在场；目录为静态真实条目（无"右键更新"
+    占位文本）；页脚 NUMPAGES 与 PDF 实际页数一致。"""
+    import re
+    import docx
+    import pypdfium2 as pdfium
+    from docx.oxml.ns import qn
+    d = docx.Document(built_report["docx"])
+    assert d.settings.element.find(qn("w:updateFields")) is not None
+    body = d.element.xml
+    assert "右键点击此处" not in body, "目录仍是占位文本"
+    if built_report.get("pdf"):
+        pdf = pdfium.PdfDocument(built_report["pdf"])
+        try:
+            n = len(pdf)
+            last = pdf[n - 1].get_textpage().get_text_range()
+        finally:
+            pdf.close()
+        m = re.search(r"共\s*(\d+)\s*页", last)
+        assert m and int(m.group(1)) == n, f"页脚总数与实际不符: {m and m.group(1)} vs {n}"

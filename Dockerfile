@@ -34,12 +34,14 @@ COPY assets/fonts/ /usr/share/fonts/truetype/noto-sc/
 RUN fc-cache -f
 
 # 应用代码与烘焙产物（模型 .ready 已验证 → 运行时强制离线，零下载零联网）
-# config/ 含占位符映射与 RPA 名册；assets/ 含报告模板与字体；data/kb/ 为索引三件套
+# config/ 含占位符映射与 RPA 名册；assets/ 含报告模板与字体
+# data/kb/ 为赛题保密数据派生的索引，不进镜像（构建上下文可能没有它）——
+# 首次启动由 entrypoint 从挂卷数据现场构建，索引持久化在 kb-data 命名卷
 COPY app/ app/
 COPY assets/ assets/
 COPY models/ models/
 COPY config/ config/
-COPY data/kb/ data/kb/
+RUN mkdir -p /app/data/kb
 COPY scripts/docker_entrypoint.sh /docker_entrypoint.sh
 RUN chmod +x /docker_entrypoint.sh
 
@@ -49,7 +51,7 @@ ENV HF_HUB_OFFLINE=1 \
     COST_INSIGHT_DATA_DIR=/data-source
 
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=240s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/products', timeout=4)"
 
 CMD ["/docker_entrypoint.sh"]

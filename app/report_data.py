@@ -410,14 +410,25 @@ def _price_impact(d) -> str:
 
 
 def _rectify_tasks(product: str, month: str, alerts) -> list[list]:
-    """告警 → 整改任务五字段（任务编号/标题/责任人/优先级/来源/截止时间）。"""
+    """告警 → 整改任务五字段（任务编号/标题/责任人/优先级/来源/截止时间）。
+
+    任务身份统一（外部评审修复）：编号优先取 dispatch_log 中该产品该月
+    已成功下发的真实 RPA task_id（标题同格式精确匹配）——报告、看板、
+    RPA 三方共享同一任务身份，审计链不再断在报告这一环；
+    未下发的告警标"待下发"，系统永不虚构编号（原 ZG-* 为伪造 ID，已废弃）。"""
     y, mth = int(month[:4]), int(month[5:7])
     deadline = f"{y}-{mth + 1:02d}-25" if mth < 12 else f"{y + 1}-01-25"
+    try:
+        from .act import _sent_records
+        sent = {r["title"]: r["task_id"] for r in _sent_records(product, month)}
+    except Exception:
+        sent = {}
     rows = []
-    for i, a in enumerate(alerts, 1):
+    for a in alerts:
         dept, prio = _DEPT_RULES.get(a.channel, ("财务部", "中"))
-        rows.append([f"ZG-{month}-{i:02d}",
-                     f"核查{a.element}异常（{a.channel}）",
+        title = f"核查{a.element}异常（{a.channel}）"
+        rows.append([sent.get(title, "待下发"),
+                     title,
                      dept, prio, f"成本告警·{product} {month}", deadline])
     return rows or [["—", "本月无整改任务", "—", "—", "—", "—"]]
 

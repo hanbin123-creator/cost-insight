@@ -3,7 +3,7 @@
 [![compose-smoke](../../actions/workflows/compose-smoke.yml/badge.svg)](../../actions/workflows/compose-smoke.yml)
 
 > 2026 年第二届重庆市 AI 大模型创新应用大赛 · 创灵境赛题
-> 设计哲学：**大模型永不算数**——所有数字由代码计算（DuckDB/Pandas），大模型只做意图理解与文字表达，数字与文字之间用 schema 闸门与自动对账隔离。
+> 设计哲学：**大模型永不算数**——所有数字由代码计算（SQLite/Pandas），大模型只做意图理解与文字表达，数字与文字之间用 schema 闸门与自动对账隔离。
 
 ## 一键启动（Docker）
 
@@ -56,8 +56,8 @@ cd ../创灵境_考题模拟数据/05_RPA接口文档 && python mock_rpa_server.
 
 ## 测试与质量
 
-- 后端 **172 项 pytest**（计算对账误差 0、路由仲裁边界、schema 闸、幂等核实）：`pytest tests/`
-- 前端 **69 项 vitest**（视图模型纯函数）：`cd web && npm run test`
+- 后端 **174 项 pytest**（167 个测试函数含参数化展开；计算对账误差 0、路由仲裁边界、schema 闸、幂等核实）：`pytest tests/`
+- 前端 **76 项 vitest**（视图模型纯函数）：`cd web && npm run test`
 - 断网韧性：LLM/RPA 缺席自动降级且如实标注，服务不炸（CI 冒烟环境即无 LLM 密钥，顺带验证此路径）
 
 ## 目录速览

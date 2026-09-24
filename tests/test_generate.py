@@ -274,3 +274,56 @@ def test_llm_client_requires_config(monkeypatch):
         monkeypatch.delenv(k, raising=False)
     with pytest.raises(LLMError):
         LLMClient()
+
+
+def _verify_with(calc, retriever, require_citation=True, **over):
+    """用自洽正例改一个字段后直跑校验器（全域覆盖加固的负例族）。"""
+    canned, metrics, knowledge = _good_canned(calc, retriever)
+    data = json.loads(canned)
+    data.update(over)
+    report = parse_report(json.dumps(data, ensure_ascii=False), "银黄口服液", "2026-05")
+    return verify_report(report, metrics, knowledge,
+                         require_citation=require_citation)
+
+
+def test_summary_fabricated_number_rejected(env):
+    """summary 里的编造数字同样被拦（原校验只查 causes[].detail）。"""
+    calc, retriever = env
+    v = _verify_with(calc, retriever, summary="本月单位成本暴涨至 999.9 元/盒")
+    assert v["verdict"] == "rejected"
+    assert any("summary" in e and "999.9" in e for e in v["errors"])
+
+
+def test_suggestion_fabricated_number_rejected(env):
+    calc, retriever = env
+    v = _verify_with(calc, retriever, suggestions=["再进 888.8 吨金银花压价"])
+    assert v["verdict"] == "rejected"
+    assert any("suggestions[0]" in e for e in v["errors"])
+
+
+def test_empty_causes_rejected(env):
+    calc, retriever = env
+    v = _verify_with(calc, retriever, causes=[])
+    assert v["verdict"] == "rejected"
+    assert any("causes 至少 1 条" in e for e in v["errors"])
+
+
+def test_zero_citation_rejected(env):
+    """全文零知识引用 → rejected（强制至少一条证据）。"""
+    calc, retriever = env
+    canned, _, _ = _good_canned(calc, retriever)
+    data = json.loads(canned)
+    data["causes"][0]["citations"] = []
+    v = _verify_with(calc, retriever, causes=data["causes"])
+    assert v["verdict"] == "rejected"
+    assert any("知识证据" in e for e in v["errors"])
+
+
+def test_template_track_citation_gate_off(env):
+    """模板句兜底轨不强制引用（模板句本就不引知识块，强制即造假）。"""
+    calc, retriever = env
+    canned, _, _ = _good_canned(calc, retriever)
+    data = json.loads(canned)
+    data["causes"][0]["citations"] = []
+    v = _verify_with(calc, retriever, require_citation=False, causes=data["causes"])
+    assert v["passed"], v["errors"]

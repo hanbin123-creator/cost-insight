@@ -8,3 +8,8 @@ __pycache__/
 .env
 *.db-shm
 *.db-wal
+
+# 赛题数据派生文件（评测证据本地保留，不进公开仓库）
+data/kb/
+reports/
+docs/e2e/

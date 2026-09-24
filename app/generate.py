@@ -92,16 +92,41 @@ def _pack_allowlist(metrics: MetricsPack, knowledge: KnowledgePack) -> set[float
     return allow
 
 
+def _check_text_numbers(text: str, tag: str, allow: set[float],
+                        errors: list[str]) -> None:
+    """无声明字段文本（summary/建议）的数字校验：数字必须在白名单内。
+    精度丢失检查沿用带单位守卫；无声明可补全，违规即错误（反馈重试兜收敛）。"""
+    for n, has_unit in _numbers_with_units(text):
+        if round(n, 4) in allow:
+            continue
+        if has_unit and n == int(n):
+            near = sorted((x for x in allow
+                           if x != int(x) and abs(x - n) < 1),
+                          key=lambda x: abs(x - n))[:3]
+            if near:
+                errors.append(
+                    f"{tag} 精度丢失：数字 {n:g} 带单位但非产物包原值（相近原值 "
+                    f"{' / '.join(f'{x:g}' for x in near)}，应按原值完整引用）")
+                continue
+        errors.append(f"{tag} 数字 {n} 不在产物包中（疑似编造/心算）")
+
+
 def verify_report(report: AttributionReport, metrics: MetricsPack,
                   knowledge: KnowledgePack,
-                  extra_allow: set[float] | None = None) -> dict:
-    """三级裁决定对账（决策 F 加固版）：
+                  extra_allow: set[float] | None = None,
+                  require_citation: bool = True) -> dict:
+    """三级裁决定对账（决策 F 加固版 + 全域覆盖加固）：
     - pass：零问题
     - auto_fixed：正文数字真实存在于产物包但未声明 → 自动补全声明（粗心可自愈，
       误报拦截率的关键区分：真实未声明=警告修复，不存在=编造拦截）
     - rejected：编造数字（不在白名单）或编造出处（chunk_id 不存在）→ 硬错误
     返回 {"verdict", "passed", "fixed", "errors"}；passed = verdict != rejected。
     extra_allow：板块3 传入对标树数值（白名单外但同为代码算好的合法数字）。
+    全域覆盖（外部评审修复）：summary 与 suggestions 的数字同样过白名单；
+    causes 空与全文零引用（require_citation 时）判 rejected——校验承诺覆盖
+    报告的每一个字，不再只查 causes[].detail。
+    require_citation=False 用于模板句兜底轨（无 LLM 时模板句本就不引用知识块，
+    强制引用反而是造假）。
     """
     errors: list[str] = []
     fixed: list[str] = []
@@ -109,6 +134,14 @@ def verify_report(report: AttributionReport, metrics: MetricsPack,
     if extra_allow:
         allow |= extra_allow
     valid_ids = {h.chunk_id for h in knowledge.hits}
+
+    if not report.causes:
+        errors.append("归因结论为空：causes 至少 1 条")
+    _check_text_numbers(report.summary, "summary", allow, errors)
+    for j, s in enumerate(report.suggestions):
+        _check_text_numbers(s, f"suggestions[{j}]", allow, errors)
+    if require_citation and not any(c.citations for c in report.causes):
+        errors.append("全文未引用任何知识证据：citations 至少 1 条")
 
     for i, cause in enumerate(report.causes):
         tag = f"causes[{i}]《{cause.title}》"
