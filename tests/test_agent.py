@@ -14,11 +14,14 @@ from app.pipeline import Deps, Pipeline
 
 
 @pytest.fixture(scope="module")
-def pipeline():
+def pipeline(tmp_path_factory):
     store, _ = init_store()
     calc = CostCalculator(store)
     from app.charts import ChartBuilder
-    return Pipeline(Deps(calc=calc, charts=ChartBuilder(calc)))
+    # out_dir 注入临时目录：report 场景真实执行时不得覆盖 reports/ 下的
+    # 正式样例（曾把 LLM 轨样例踩踏成模板句版）
+    out = tmp_path_factory.mktemp("agent_reports")
+    return Pipeline(Deps(calc=calc, charts=ChartBuilder(calc), out_dir=out))
 
 
 def _llm(intent: str, conf: float) -> MockLLM:

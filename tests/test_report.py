@@ -438,12 +438,14 @@ def test_render_pdf_watcher_early_success(tmp_path, monkeypatch):
     assert elapsed < 5
 
 
-def test_api_report_endpoint(monkeypatch):
+def test_api_report_endpoint(monkeypatch, tmp_path):
     # V1 后 .env 会被加载——本测试断言模板兜底路径的契约（离线确定性），
     # 显式清掉 LLM 环境，不打真实 API
     for k in ("LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL",
               "LLM_SMALL_BASE_URL", "LLM_SMALL_API_KEY", "LLM_SMALL_MODEL"):
         monkeypatch.delenv(k, raising=False)
+    # 产物目录改道 tmp：不得覆盖 reports/ 下的正式样例（曾踩 LLM 版为模板句版）
+    monkeypatch.setattr("app.api._REPORTS_DIR", tmp_path)
     from fastapi.testclient import TestClient
     from app.api import app
     c = TestClient(app)

@@ -204,7 +204,7 @@ async def report(req: ReportRequest) -> dict:
         if not req.month:
             raise HTTPException(422, "monthly/topical 主题须指定 month（YYYY-MM）")
         month = req.month
-    out_dir = Path(__file__).resolve().parent.parent / "reports"
+    out_dir = _REPORTS_DIR
     try:
         result = await run_in_threadpool(
             build_report, _State.calc, _State.retriever, _try_llm(),
