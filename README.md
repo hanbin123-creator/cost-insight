@@ -27,9 +27,17 @@ docker compose -f docker-compose.yml -f docker-compose.rpa.yml up --build
   **不配也能跑**——意图路由自动降级规则兜底，报告文字降级模板生成，界面如实标注降级层，不放假数据。
 - 无考题数据包也能预览界面：`docker compose -f docker-compose.yml -f docker-compose.ci.yml up --build`
   （`placeholder-data/` 为合成占位数据，仅演示用）。
+- 报告模板不入库：`assets/report_template.docx` 属赛题保密资源，Docker 启动时由 entrypoint
+  自动从挂载的数据包复制；本地开发请手动将数据包 `04_报告模板/月度成本分析报告模板.docx`
+  复制为该路径。缺模板时报告接口给出明确中文报错，其余功能不受影响。
 
 每次 push 由 GitHub Actions 真机执行 `compose build + up --wait + curl 冒烟`（见顶部徽章），
 一键启动可达性由 CI 持续背书。
+
+## 开源致谢
+
+本项目代码为原创；第三方开源组件（Noto Sans SC 字体 OFL-1.1、bge-small-zh-v1.5 模型 MIT、
+FastAPI/Pandas/Vue/ECharts 等依赖）的来源与许可证见 [NOTICE.md](NOTICE.md)。
 
 ## 本地开发启动
 
