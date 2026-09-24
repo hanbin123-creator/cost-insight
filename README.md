@@ -49,6 +49,7 @@ FastAPI/Pandas/Vue/ECharts 等依赖）的来源与许可证见 [NOTICE.md](NOTI
 ## 本地开发启动
 
 > 确认终端已在 `cost-insight/` 目录内（第 0 步）。前端需**另开一个终端**窗口。
+> 知识库索引**首次启动自动构建**（约 30 秒，日志可见）；手动重建用 `python -m app.kb`。
 
 ```bash
 pip install -r requirements.txt

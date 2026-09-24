@@ -234,3 +234,33 @@ def load_chunks(index_dir: Path = C.KB_INDEX_DIR) -> list[dict]:
     if not path.exists():
         raise FileNotFoundError(f"知识索引未构建，请先运行 kb.build_index(): {path}")
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def ensure_index() -> bool:
+    """索引缺失则现场构建（本地开发自愈，与 Docker entrypoint 同行为）。
+
+    返回 True=本次新建，False=已存在。构建语料来自 COST_INSIGHT_DATA_DIR
+    挂载/同级数据包；语料缺失时给中文指引而非裸堆栈。"""
+    if (C.KB_INDEX_DIR / "chunks.jsonl").exists():
+        return False
+    if not C.KB_DIR.exists():
+        raise FileNotFoundError(
+            f"找不到知识库语料目录 {C.KB_DIR}。请将考题数据包放到本仓库同级目录"
+            "（../创灵境_考题模拟数据），或设 COST_INSIGHT_DATA_DIR 指向它——"
+            "详见 README 第 0 步。")
+    print(f"[kb] 索引缺失，正在从 {C.KB_DIR} 现场构建（约 30 秒，仅首次）...")
+    chunks = build_index()
+    print(f"[kb] 索引构建完成：{len(chunks)} 块 → {C.KB_INDEX_DIR}")
+    return True
+
+
+def main() -> None:
+    """命令行入口：python -m app.kb 构建知识库索引。"""
+    if ensure_index():
+        print("完成。")
+    else:
+        print(f"索引已存在（{C.KB_INDEX_DIR}），无需重建。")
+
+
+if __name__ == "__main__":
+    main()

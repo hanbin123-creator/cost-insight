@@ -54,6 +54,8 @@ class _State:
 
 @lru_cache(maxsize=1)
 def _init() -> None:
+    from .kb import ensure_index
+    ensure_index()  # 本地裸克隆自愈：索引缺失现场构建（Docker 由 entrypoint 做同件事）
     _State.store, _ = init_store()
     _State.calc = CostCalculator(_State.store)
     _State.charts = ChartBuilder(_State.calc)
