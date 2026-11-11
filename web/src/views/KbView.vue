@@ -55,7 +55,10 @@
         </thead>
         <tbody>
           <tr v-for="d in docs.documents" :key="d.name">
-            <td class="d-name">{{ d.name }}</td>
+            <td class="d-name">
+              {{ d.name }}
+              <span v-if="d.origin === '数据飞轮'" class="origin-badge" title="整改闭环经验回流沉淀的语料（数据飞轮 A1）">飞轮</span>
+            </td>
             <td>{{ fmtSize(d.size_kb) }}</td>
             <td>{{ d.indexed ? d.indexed_chunks : '—' }}</td>
             <td class="d-ver">{{ d.doc_version ?? '—' }}</td>
@@ -217,6 +220,10 @@ onMounted(refreshDocs)
 }
 .doc-table td { padding: 8px; border-bottom: 1px solid #f4f6fa; color: var(--text-num); }
 .d-name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.origin-badge {
+  margin-left: 6px; font-size: 10px; padding: 1px 6px; border-radius: 999px;
+  background: rgba(30, 132, 73, 0.12); color: #1e8449;
+}
 .d-ver { font-size: 11px; color: var(--text-label); }
 .idx { font-size: 11px; color: var(--text-label); }
 .idx.ok { color: #1e8449; }

@@ -1,8 +1,9 @@
 /** API 访问层：所有请求集中于此；错误统一抛出由面板三态展示 */
 import type {
-  AttributionResp, BenchmarkResp, ChatResp, DecisionResp, ForecastResp, HeatmapResp,
-  KbDocsResp, KbQueryResp, MetricsResp, ProductsResp, RectifyDispatchResp, ReportGenResp,
-  ReportsResp, SeriesResp, StructureResp, TrackingResp, WaterfallResp,
+  ApproveResp, AttributionResp, BenchmarkResp, ChatResp, DecisionResp, ForecastResp,
+  HeatmapResp, KbDocsResp, KbQueryResp, MetricsResp, ProductsResp, RectifyDispatchResp,
+  ReportGenResp, ReportsResp, SeriesResp, StructureResp, TrackingResp, UsageResp,
+  WaterfallResp,
 } from './types'
 
 const BASE = '/api'
@@ -51,6 +52,11 @@ export const api = {
   generateReport: (product: string, theme: 'monthly' | 'quarterly' | 'topical',
     month?: string, quarter?: string) =>
     post<ReportGenResp>('/report', { product, theme, month, quarter }),
+  // A3 人工签发
+  approveReport: (stem: string, approver: string) =>
+    post<ApproveResp>(`/reports/approve/${encodeURIComponent(stem)}`, { approver }),
+  // A2 token 用量
+  usage: () => get<UsageResp>('/usage'),
   // F10 知识库
   kbQuery: (q: string, topK = 5) =>
     get<KbQueryResp>(`/kb/query?q=${encodeURIComponent(q)}&top_k=${topK}`),

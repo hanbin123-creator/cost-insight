@@ -29,6 +29,12 @@
 
     <p v-if="dispatchNote" class="dispatch-note" :class="{ err: dispatchErr, warn: dispatchWarn && !dispatchErr }">{{ dispatchNote }}</p>
 
+    <!-- A1 数据飞轮：本次追踪新沉淀的整改经验（知识库热更新由此触发） -->
+    <p v-if="data?.ok && (data.flywheel?.new_records ?? 0) > 0" class="flywheel-note">
+      ♻ 数据飞轮：本次追踪新沉淀 {{ data.flywheel!.new_records }} 条整改经验，
+      已写入知识库语料并触发索引热更新——到「知识库」页检索「历史整改记录」可验证闭环
+    </p>
+
     <!-- RPA 不可达：如实状态卡（不展示假数据），给出恢复路径 -->
     <section v-if="data && !data.ok" class="panel unreachable">
       <h3>⚠ RPA 服务不可达</h3>
@@ -152,6 +158,10 @@ select {
 .dispatch-note { margin: 0; font-size: 12.5px; color: #1e8449; }
 .dispatch-note.err { color: #c0392b; }
 .dispatch-note.warn { color: #b9770e; }
+.flywheel-note {
+  margin: 0; font-size: 12.5px; color: #1e8449;
+  background: rgba(30, 132, 73, 0.08); border-radius: 10px; padding: 8px 14px;
+}
 .unreachable h3 { margin: 0 0 8px; font-size: 14px; color: var(--sem-alert); }
 .unreachable p { margin: 4px 0; font-size: 12.5px; color: var(--text-num); }
 .hint-line { color: var(--text-label) !important; }

@@ -60,6 +60,16 @@ def test_rule_fallback_when_llm_broken(pipeline):
     assert out["layer"] == "rule" and out["intent"] == "benchmark"
 
 
+def test_heatmap_keyword_routes_dashboard(pipeline):
+    """热力图查询规则兜底（手册验收项）："热力图/热力" 是 dashboard 硬关键词，
+    无 LLM 时也必须路由到看板场景，不得掉四入口。"""
+    out = route("看下银黄口服液2026-05的热力图", pipeline, llm=None)
+    assert out["layer"] == "rule" and out["intent"] == "dashboard"
+    assert out["result"]["ok"] is True
+    out2 = route("银黄口服液2026-05热力图", pipeline, llm=None)
+    assert out2["intent"] == "dashboard"
+
+
 # ---------- 9. 低置信与双不中 → 四入口（不猜） ----------
 
 def test_low_confidence_returns_choices(pipeline):

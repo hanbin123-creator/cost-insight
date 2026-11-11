@@ -11,7 +11,16 @@
           {{ t.label }}
         </button>
       </div>
-      <button class="refresh-btn" :disabled="generating" @click="refresh">刷新归档</button>
+      <div class="ab-right">
+        <!-- A2：LLM token 用量实测一行览（无调用全零如实显示） -->
+        <span v-if="usage" class="usage-line" title="LLM 调用用量（按 API 响应 usage 逐次落盘聚合）">
+          LLM 调用 {{ usage.calls }} 次 · {{ fmtTokens(usage.total_tokens) }} tokens
+        </span>
+        <!-- A3：签发人（人工签发留痕用；不用 window.prompt——嵌入式 webview 不支持） -->
+        <input v-model="approverName" class="approver-input" placeholder="签发人"
+          title="点「人工签发」时写入留痕的签发人姓名" />
+        <button class="refresh-btn" :disabled="generating" @click="refresh">刷新归档</button>
+      </div>
     </section>
 
     <!-- 生成进度 / 结果条 -->
@@ -60,6 +69,10 @@
             <div class="tl-head">
               <span class="tl-theme">{{ themeLabel(r.theme) }}</span>
               <strong>{{ r.product }} · {{ r.period }}</strong>
+              <!-- A3：签发状态徽标——状态机真源在后端注册表，前端只展示不推断 -->
+              <span class="sign-badge" :class="{ signed: r.status === '已签发' }">
+                {{ r.status === '已签发' ? `已签发 · ${r.approved_by}` : '待签发' }}
+              </span>
               <span class="tl-time">{{ fmtMtime(r.mtime) }}</span>
             </div>
             <div class="tl-files">
@@ -70,6 +83,12 @@
                 PDF · {{ fmtSize(r.pdf.size_kb) }}
               </a>
               <span v-if="!r.pdf" class="file none">PDF 未出（本机 LibreOffice 不可达时如实缺省）</span>
+              <!-- A3：人工签发按钮——签发后状态翻转并留痕（签发人+时间） -->
+              <button v-if="r.status !== '已签发'" class="approve-btn"
+                :disabled="approving === r.stem" @click="approve(r)">
+                {{ approving === r.stem ? '签发中…' : '人工签发' }}
+              </button>
+              <span v-else class="approved-at">签发于 {{ r.approved_at }}</span>
             </div>
           </div>
         </article>
@@ -86,7 +105,7 @@ import { onMounted, ref } from 'vue'
 import { api } from '../api'
 import { fmtMtime, fmtSize, themeLabel, validateReportParams } from '../archiveHelpers'
 import { store } from '../store'
-import type { ReportsResp } from '../types'
+import type { ReportItem, ReportsResp, UsageResp } from '../types'
 
 const THEMES = [
   { key: 'monthly', label: '月度报告' },
@@ -109,6 +128,31 @@ const formErr = ref('')
 const generating = ref(false)
 const genNote = ref('')
 const genErr = ref(false)
+
+// A2：LLM 用量（加载失败不阻断归档主流程）
+const usage = ref<UsageResp | null>(null)
+function fmtTokens(n: number): string {
+  return n >= 10000 ? `${(n / 1000).toFixed(1)}k` : String(n)
+}
+
+// A3：人工签发（签发人留痕；失败如实提示，状态不伪造翻转）
+const approving = ref('')
+const approverName = ref('人工复核')
+async function approve(r: ReportItem) {
+  const name = approverName.value.trim() || '人工复核'
+  approving.value = r.stem
+  genErr.value = false
+  try {
+    await api.approveReport(r.stem, name)
+    genNote.value = `《${r.product} · ${r.period}》已签发（${name}）`
+    await refresh()
+  } catch (e) {
+    genNote.value = `签发失败：${e instanceof Error ? e.message : String(e)}`
+    genErr.value = true
+  } finally {
+    approving.value = ''
+  }
+}
 
 async function refresh() {
   loading.value = true
@@ -151,6 +195,7 @@ async function generate() {
 
 onMounted(async () => {
   refresh()
+  api.usage().then((u) => { usage.value = u }).catch(() => { /* 用量加载失败不阻断 */ })
   try {
     const p = await api.products()
     products.value = p.products
@@ -165,6 +210,12 @@ onMounted(async () => {
 
 .action-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
 .ab-left { display: flex; align-items: center; gap: 10px; }
+.ab-right { display: flex; align-items: center; gap: 10px; }
+.usage-line { font-size: 11.5px; color: var(--text-label); font-variant-numeric: tabular-nums; }
+.approver-input {
+  width: 88px; border: none; border-radius: 10px; padding: 8px 10px;
+  background: rgba(93, 109, 126, 0.08); font-size: 12.5px; color: var(--text-num); outline: none;
+}
 .ab-title { font-size: 13px; font-weight: 600; color: var(--text-unit); margin-right: 2px; }
 .theme-btn {
   border: none; border-radius: 10px; padding: 9px 16px; cursor: pointer;
@@ -220,6 +271,17 @@ onMounted(async () => {
   background: rgba(46, 109, 164, 0.1); color: var(--primary);
 }
 .tl-head strong { font-size: 13.5px; color: var(--text-num); }
+.sign-badge {
+  font-size: 10.5px; padding: 1px 8px; border-radius: 999px;
+  background: rgba(242, 142, 44, 0.14); color: #b9770e;
+}
+.sign-badge.signed { background: rgba(30, 132, 73, 0.12); color: #1e8449; }
+.approve-btn {
+  border: none; border-radius: 8px; padding: 3px 12px; cursor: pointer;
+  background: var(--primary); color: #fff; font-size: 12px;
+}
+.approve-btn:disabled { opacity: 0.6; cursor: wait; }
+.approved-at { font-size: 11px; color: var(--text-label); }
 .tl-time { margin-left: auto; font-size: 11px; color: var(--text-label); font-variant-numeric: tabular-nums; }
 .tl-files { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
 a.file {

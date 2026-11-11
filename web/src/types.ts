@@ -233,6 +233,12 @@ export interface RpaTask {
   source?: string
 }
 
+/** 数据飞轮反馈（A1）：本次追踪新沉淀的整改经验条数与语料文档 */
+export interface FlywheelInfo {
+  new_records: number
+  doc: string | null
+}
+
 export interface TrackingResp {
   ok: boolean
   error?: string
@@ -243,6 +249,7 @@ export interface TrackingResp {
     by_status: Record<string, number>
     by_priority: Record<string, number>
   } | null
+  flywheel?: FlywheelInfo
   tasks?: RpaTask[]
 }
 
@@ -253,6 +260,11 @@ export interface ReportItem {
   product: string
   period: string
   theme: string
+  stem: string
+  /** 签发状态机（A3）：待签发=内部草稿 / 已签发=人工复核通过 */
+  status: '待签发' | '已签发'
+  approved_by?: string
+  approved_at?: string
   docx: ReportFile | null
   pdf: ReportFile | null
   mtime: number
@@ -261,6 +273,25 @@ export interface ReportItem {
 export interface ReportsResp {
   reports: ReportItem[]
   unknown_files: string[]
+}
+
+/** 签发响应（POST /api/reports/approve/{stem}） */
+export interface ApproveResp {
+  stem: string
+  status: '已签发'
+  approved_by: string
+  approved_at: string
+}
+
+/** LLM token 用量聚合（A2，/api/usage）：无 LLM 调用时全零如实呈现 */
+export interface UsageResp {
+  calls: number
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  by_role: Record<string, { calls: number; total_tokens: number }>
+  by_model: Record<string, { calls: number; total_tokens: number }>
+  recent: Array<Record<string, unknown>>
 }
 
 /** 报告生成响应（POST /api/report）：数字/表格全部后端算好，warnings 如实呈现 */
@@ -290,6 +321,8 @@ export interface KbQueryResp { query: string; hits: KbHit[] }
 /** 知识库文档条目（/api/kb/documents） */
 export interface KbDoc {
   name: string
+  /** 语料来源（A1）：考题知识库 / 数据飞轮（整改经验回流沉淀） */
+  origin?: string
   size_kb: number
   indexed_chunks: number
   doc_version: string | null
