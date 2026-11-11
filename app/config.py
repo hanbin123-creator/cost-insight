@@ -27,6 +27,12 @@ DATA_DIR = Path(os.environ.get("COST_INSIGHT_DATA_DIR",
                                WORKSPACE / "创灵境_考题模拟数据"))
 DB_PATH = ROOT / "data" / "cost.db"
 
+# 数据飞轮（A1）：整改闭环经验回流知识库
+FLYWHEEL_DIR = ROOT / "data" / "flywheel"                          # 飞轮语料目录（kb 增量源）
+FLYWHEEL_DOC = FLYWHEEL_DIR / "数据飞轮_整改经验记录.txt"           # 历史经验记录文档
+# token 成本实测（A2）：LLM 调用用量日志
+TOKEN_USAGE_PATH = ROOT / "data" / "token_usage.jsonl"
+
 # 业务常量
 ALERT_THRESHOLD = 0.10          # 波动告警阈值 ±10%（赛题 5.2.3）
 MONEY_NDIGITS = 2               # 金额输出保留 2 位

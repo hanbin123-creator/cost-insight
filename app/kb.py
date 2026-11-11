@@ -26,7 +26,8 @@ logger = logging.getLogger(__name__)
 from .radical_map import RADICAL_MAP
 
 DOC_TYPES = {"产品配方": "formula", "生产工艺": "process",
-             "车间设备": "equipment", "GMP": "gmp", "药品生产": "gmp"}
+             "车间设备": "equipment", "GMP": "gmp", "药品生产": "gmp",
+             "数据飞轮": "history_record"}   # 飞轮沉淀的历史整改经验（A1）
 
 SECTION_RE = re.compile(r"^\s*([一二三四五六七八九十]+、|\d+\.\d+|\d+、|第[一二三四五六七八九十百]+[章节条])")
 VERSION_RE = re.compile(r"版本[:：]\s*(\S+)")
@@ -173,14 +174,20 @@ def _emit(buf: list[tuple[int, str, str]], doc_name: str,
             "text": "\n".join(it[2] for it in buf)}
 
 
-def build_index(kb_dir: Path = C.KB_DIR, out_dir: Path = C.KB_INDEX_DIR) -> list[dict]:
-    """全量构建：解析全部文档 → 切分 → BGE 嵌入 → 持久化 chunks.jsonl + vectors.npy。"""
+def build_index(kb_dir: Path = C.KB_DIR, out_dir: Path = C.KB_INDEX_DIR,
+                extra_dirs: tuple = (C.FLYWHEEL_DIR,)) -> list[dict]:
+    """全量构建：解析全部文档 → 切分 → BGE 嵌入 → 持久化 chunks.jsonl + vectors.npy。
+
+    extra_dirs：增量语料目录（默认含数据飞轮目录）——飞轮沉淀的历史整改经验
+    与考题文档同链路切分/嵌入/入库，doc_type=history_record 可区分。"""
     out_dir.mkdir(parents=True, exist_ok=True)
     chunks: list[dict] = []
-    for path in sorted(kb_dir.iterdir()):
-        if path.suffix.lower() not in (".pdf", ".txt", ".docx", ".doc"):
-            continue
-        chunks.extend(chunk_document(path))
+    dirs = [kb_dir] + [d for d in extra_dirs if Path(d).exists()]
+    for d in dirs:
+        for path in sorted(Path(d).iterdir()):
+            if path.suffix.lower() not in (".pdf", ".txt", ".docx", ".doc"):
+                continue
+            chunks.extend(chunk_document(path))
     if not chunks:
         raise ValueError(f"知识库为空: {kb_dir}")
 

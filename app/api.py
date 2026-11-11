@@ -211,14 +211,41 @@ async def report(req: ReportRequest) -> dict:
         result = await run_in_threadpool(
             build_report, _State.calc, _State.retriever, _try_llm(),
             req.product, month, out_dir, req.theme, req.quarter)
+        _register_report(Path(result["docx"]).stem)   # A3：新报告默认"待签发"
         return result
     except KeyError as e:
         raise HTTPException(404, str(e))
 
 
-# ---------- 报告归档（F8 报告中心：列表 + 下载） ----------
+# ---------- 报告归档（F8 报告中心：列表 + 下载 + 人工签发状态机 A3） ----------
 _REPORTS_DIR = Path(__file__).resolve().parent.parent / "reports"
 _REPORT_SUFFIXES = (".docx", ".pdf")
+_REGISTRY_PATH = _REPORTS_DIR / ".registry.json"   # 签发状态注册表（sidecar）
+
+
+def _load_registry() -> dict:
+    import json
+    if not _REGISTRY_PATH.exists():
+        return {}
+    try:
+        return json.loads(_REGISTRY_PATH.read_text(encoding="utf-8"))
+    except ValueError:
+        return {}          # 注册表损坏不阻塞列表——状态按缺省"待签发"如实给出
+
+
+def _save_registry(reg: dict) -> None:
+    import json
+    _REPORTS_DIR.mkdir(exist_ok=True)
+    _REGISTRY_PATH.write_text(json.dumps(reg, ensure_ascii=False, indent=2),
+                              encoding="utf-8")
+
+
+def _register_report(stem: str) -> None:
+    """新报告默认进入"待签发"（内部草稿）状态；已存在不覆盖既有状态。"""
+    reg = _load_registry()
+    if stem not in reg:
+        reg[stem] = {"status": "待签发"}
+        _save_registry(reg)
 
 
 def _parse_report_name(p: Path) -> dict | None:
@@ -251,12 +278,44 @@ def report_list() -> dict:
         if meta is None:
             unknown.append(p.name)
             continue
-        g = groups.setdefault(p.stem, {**meta, "docx": None, "pdf": None, "mtime": 0.0})
+        g = groups.setdefault(p.stem, {**meta, "stem": p.stem,
+                                       "docx": None, "pdf": None, "mtime": 0.0})
         g[p.suffix.lower().lstrip(".")] = {
             "name": p.name, "size_kb": round(p.stat().st_size / 1024, 1)}
         g["mtime"] = max(g["mtime"], p.stat().st_mtime)
     items = sorted(groups.values(), key=lambda g: g["mtime"], reverse=True)
+    reg = _load_registry()
+    for g in items:
+        entry = reg.get(g["stem"], {})
+        g["status"] = entry.get("status", "待签发")     # 缺省=内部草稿待签发
+        if entry.get("approved_by"):
+            g["approved_by"] = entry["approved_by"]
+            g["approved_at"] = entry.get("approved_at")
     return {"reports": items, "unknown_files": sorted(unknown)}
+
+
+class ReportApproveRequest(BaseModel):
+    approver: str = "人工复核"     # 签发人留痕（谁签的字）
+
+
+@app.post("/api/reports/approve/{stem}")
+def report_approve(stem: str, req: ReportApproveRequest) -> dict:
+    """人工签发（A3）：报告从"待签发"翻转为"已签发"，签发人与时间留痕。
+    状态机是真实存在的系统行为，不是话术——未签发的报告在报告中心
+    与文档页脚均标"内部草稿 · 待人工复核签发"。"""
+    from datetime import datetime
+    stem = Path(stem).stem          # 防路径穿越：只取 stem
+    _REPORTS_DIR.mkdir(exist_ok=True)
+    if not any(p.stem == stem and p.suffix.lower() in _REPORT_SUFFIXES
+               for p in _REPORTS_DIR.iterdir()):
+        raise HTTPException(404, f"报告不存在: {stem}")
+    reg = _load_registry()
+    entry = reg.get(stem, {})
+    entry.update(status="已签发", approved_by=req.approver,
+                 approved_at=datetime.now().isoformat(timespec="seconds"))
+    reg[stem] = entry
+    _save_registry(reg)
+    return {"stem": stem, **entry}
 
 
 @app.get("/api/reports/{filename}")
@@ -269,6 +328,15 @@ def report_download(filename: str) -> FileResponse:
     if not target.exists() or _parse_report_name(target) is None:
         raise HTTPException(404, f"报告不存在: {name}")
     return FileResponse(target, filename=name)
+
+
+# ---------- token 成本实测（A2） ----------
+@app.get("/api/usage")
+def usage() -> dict:
+    """LLM token 用量聚合：调用次数、prompt/completion/total、按角色与模型分组。
+    数据来自 llm.py 逐次调用落盘的 usage 日志——成本从"未知"变"有实测曲线"。"""
+    from .llm import aggregate_usage
+    return aggregate_usage()
 
 
 # ---------- 板块⑥ 行动闭环（RPA 整改任务） ----------
@@ -292,11 +360,18 @@ async def rectify_dispatch(req: RectifyDispatchRequest) -> dict:
 
 
 @app.get("/api/rectify/tracking")
-def rectify_tracking() -> dict:
+def rectify_tracking(background: BackgroundTasks) -> dict:
     """任务追踪聚合（已生成/已送达/已确认/优先级分布）——状态真源在 RPA 侧，
-    实时拉取聚合；RPA 不可达如实返回，不展示假数据。"""
+    实时拉取聚合；RPA 不可达如实返回，不展示假数据。
+
+    数据飞轮（A1）：本次追踪新沉淀了整改经验记录 → 后台重建索引，
+    下次检索即可命中 history_record 语料（热更新链路复用，与文档上传同路径）。"""
     from .act import tracking
-    return tracking()
+    result = tracking()
+    if result.get("ok") and (result.get("flywheel") or {}).get("new_records", 0) > 0 \
+            and _KB_JOB["state"] != "running":
+        background.add_task(_reindex_job)
+    return result
 
 
 # ---------- Agent 意图路由（加分项 6.4） ----------
@@ -387,18 +462,24 @@ def kb_query(q: str, top_k: int = 5) -> dict:
 
 @app.get("/api/kb/documents")
 def kb_documents() -> dict:
-    """文档清单：源目录文件 × 索引块数 × 版本，并列示索引覆盖状态。"""
+    """文档清单：考题文档 + 数据飞轮语料（A1），源目录文件 × 索引块数 × 版本，
+    并列示索引覆盖状态。飞轮文档带 origin 标记，块数与总数严格对账。"""
     _init()
     from collections import Counter
     counts = Counter(c["doc_name"] for c in _State.retriever.chunks)
     versions = {c["doc_name"]: c["doc_version"] for c in _State.retriever.chunks}
     docs = []
-    for p in sorted(C.KB_DIR.iterdir()):
-        if p.suffix.lower() in _KB_SUFFIXES:
-            docs.append({"name": p.name, "size_kb": round(p.stat().st_size / 1024, 1),
-                         "indexed_chunks": counts.get(p.name, 0),
-                         "doc_version": versions.get(p.name),
-                         "indexed": p.name in counts})
+    sources = [(C.KB_DIR, "考题知识库")]
+    if C.FLYWHEEL_DIR.exists():
+        sources.append((C.FLYWHEEL_DIR, "数据飞轮"))
+    for src_dir, origin in sources:
+        for p in sorted(Path(src_dir).iterdir()):
+            if p.suffix.lower() in _KB_SUFFIXES:
+                docs.append({"name": p.name, "origin": origin,
+                             "size_kb": round(p.stat().st_size / 1024, 1),
+                             "indexed_chunks": counts.get(p.name, 0),
+                             "doc_version": versions.get(p.name),
+                             "indexed": p.name in counts})
     return {"documents": docs, "total_chunks": sum(counts.values()),
             "job": dict(_KB_JOB)}
 

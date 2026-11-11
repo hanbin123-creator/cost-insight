@@ -297,9 +297,13 @@ def dispatch(product: str, month: str, calc, llm=None, speed: str | None = None,
             "resent": sum(1 for r in results if r["resent"])}
 
 
-def tracking() -> dict:
+def tracking(db_path=None) -> dict:
     """任务追踪聚合（官方文档 6.2 前端展示四项：已生成/已送达/已确认/优先级分布）。
-    状态真源在 RPA 侧，实时拉取；不可达如实返回，不展示假数据。"""
+    状态真源在 RPA 侧，实时拉取；不可达如实返回，不展示假数据。
+
+    数据飞轮挂点（A1）：首次进入 confirmed 及以后状态的任务沉淀为历史经验
+    记录（flywheel.harvest，幂等），返回值 flywheel.new_records > 0 时由
+    API 层触发索引后台重建——经验回流知识库，飞轮闭环。"""
     try:
         r = httpx.get(f"{C.RPA_BASE_URL}/api/rpa/tasks",
                       params={"page_size": 100}, timeout=C.RPA_TIMEOUT)
@@ -317,10 +321,14 @@ def tracking() -> dict:
                     ("received", "confirmed", "in_progress", "completed"))
     confirmed = sum(by_status.get(s, 0) for s in
                     ("confirmed", "in_progress", "completed"))
+    from . import flywheel
+    new_records = flywheel.harvest(tasks, db_path)
     return {"ok": True,
             "aggregate": {"已生成": data.get("total", len(tasks)),
                           "已送达": delivered, "已确认": confirmed,
                           "by_status": by_status, "by_priority": by_priority},
+            "flywheel": {"new_records": len(new_records),
+                         "doc": str(C.FLYWHEEL_DOC) if new_records else None},
             "tasks": tasks}
 
 

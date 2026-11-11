@@ -58,6 +58,10 @@ class MilvusLiteBackend:
 
 _BACKENDS = {"numpy": NumpyBackend, "milvus_lite": MilvusLiteBackend}
 
+# 全部召回通道（消融实验开关 A4）：search(channels=...) 可逐路关闭，
+# 默认全开——不传参的既有调用行为零变化
+ALL_CHANNELS = ("vector", "bm25", "graph", "exact")
+
 # 标识符型 token：字母数字 + 至少一个连字符段（EQ-JN-001、PF-2026-LW-001、
 # EQP-2026-YC01、DXDK-40VI）。要求连字符段，避免把普通英文单词误判为编号。
 _IDENTIFIER_RE = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+")
@@ -105,13 +109,22 @@ class Retriever:
         return [(i, float(n)) for i, n in scored[:per_channel]]
 
     def search(self, query: str, top_k: int = 5, per_channel: int = 10,
-               rerank: bool = True) -> KnowledgePack:
-        vec_hits = self.vector.search(embed_query(query), per_channel)
-        bm25_scores = self.bm25.get_scores(_tokenize(query))
-        bm25_idx = np.argsort(bm25_scores)[::-1][:per_channel]
-        bm25_hits = [(int(i), float(bm25_scores[i])) for i in bm25_idx]
-        graph_hits = graph_recall(self.graph, query, per_channel)
-        exact_hits = self._exact_channel(query, per_channel)
+               rerank: bool = True,
+               channels: tuple = ALL_CHANNELS) -> KnowledgePack:
+        """channels：消融实验开关（A4）——逐路关闭某通道量化其贡献；
+        默认全开，既有调用零影响。全关时如实返回空命中（不伪造结果）。"""
+        vec_hits = self.vector.search(embed_query(query), per_channel) \
+            if "vector" in channels else []
+        if "bm25" in channels:
+            bm25_scores = self.bm25.get_scores(_tokenize(query))
+            bm25_idx = np.argsort(bm25_scores)[::-1][:per_channel]
+            bm25_hits = [(int(i), float(bm25_scores[i])) for i in bm25_idx]
+        else:
+            bm25_hits = []
+        graph_hits = graph_recall(self.graph, query, per_channel) \
+            if "graph" in channels else []
+        exact_hits = self._exact_channel(query, per_channel) \
+            if "exact" in channels else []
 
         # RRF：score = Σ 1/(k + rank)，只认排名不认原始分——多路量纲天然不可比
         rrf: dict[int, float] = {}

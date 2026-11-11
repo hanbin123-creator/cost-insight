@@ -300,6 +300,7 @@ def render_docx(ctx: dict, sections: dict[str, SectionResult],
                                         font_pt=9)
                     break
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        _stamp_draft_footer(doc)   # A3：页脚草稿戳，与报告中心签发状态机配套
         _enable_update_fields(doc)
         doc.save(str(out_path))
 
@@ -312,6 +313,34 @@ _TABLE_WIDTHS = {
     # 任务编号 / 标题 / 责任人 / 优先级 / 来源 / 截止时间
     "整改任务表格": [2.6, 4.6, 1.8, 1.4, 3.4, 2.2],
 }
+
+
+def _stamp_draft_footer(doc) -> int:
+    """页脚草稿戳（A3）：每节主页脚追加"内部草稿 · 待人工复核签发"小字段落。
+    与报告中心签发状态机配套——页脚字样是系统状态的可视物证，而非话术。
+    只加纯文本段落，不碰页码域（PAGE/NUMPAGES 域逻辑零影响）。
+
+    链接页脚纪律：首节（i=0）is_linked_to_previous 只表示"尚无定义"，
+    add_paragraph 会自动创建——必须盖；后续节链接=继承前一节已盖的页脚，
+    跳过防重复。返回加盖节数。"""
+    from docx.shared import Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    stamped = 0
+    seen = set()
+    for i, section in enumerate(doc.sections):
+        footer = section.footer
+        if i > 0 and footer.is_linked_to_previous:
+            continue                       # 继承前一节已盖的页脚，不重复盖
+        if id(footer._element) in seen:
+            continue
+        seen.add(id(footer._element))
+        p = footer.add_paragraph()
+        run = p.add_run("内部草稿 · 待人工复核签发")
+        run.font.size = Pt(8)
+        run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        stamped += 1
+    return stamped
 
 
 def _enable_update_fields(doc) -> None:

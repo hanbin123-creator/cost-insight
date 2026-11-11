@@ -92,16 +92,40 @@ class CostCalculator:
         )
 
     # ---------- 三级告警（D6 优化：赛题字面口径 + 数据实际量级 + 官方示例口径） ----------
+    def _element_mom_std(self, product: str, month: str, col: str) -> tuple[float, int] | None:
+        """通道①阈值统计口径（A6）：该要素近月环比波动的总体标准差。
+        取本年初至当月的环比序列（≥3 个环比点才算，不足不如实省略），
+        回答"±10% 是不是拍脑袋"时多一层数据依据。"""
+        df = self.store.query(
+            f'SELECT {C.COL_MONTH}, "{col}" FROM summary_2026 '
+            f'WHERE {C.COL_PRODUCT}=? AND {C.COL_MONTH}<=? ORDER BY {C.COL_MONTH}',
+            (product, month))
+        vals = [float(v) for v in df[col]]
+        deltas = [d for d in (_pct(vals[i], vals[i - 1])
+                              for i in range(1, len(vals))) if d is not None]
+        if len(deltas) < 3:
+            return None
+        import statistics
+        return statistics.pstdev(deltas), len(deltas)
+
     def _collect_alerts(self, product: str, month: str,
                         elements: dict[str, ElementMetric]) -> list[Alert]:
         """通道①要素环比±10%（赛题 5.2.3 字面）；通道②原材料环比±8%（数据实际波动量级）；
         通道③行情累计涨幅±10%（年初→当月，对齐官方归因示例'金银花+12%超阈值'口径）。"""
         alerts: list[Alert] = []
         # 通道①：要素环比（保留赛题字面要求，即使当前数据不触发也必须存在）
+        _col_of = {v: k for k, v in C.ELEMENT_SHORT.items()}
         for n, e in elements.items():
             if e.mom_pct is not None and abs(e.mom_pct) > C.ALERT_THRESHOLD * 100:
+                note = ""
+                std = self._element_mom_std(product, month, _col_of[n])
+                if std is not None:     # A6：统计口径参考，超阈值倍数一目了然
+                    note = (f"（近{std[1]}个月该要素环比波动标准差约{std[0]:.1f}%，"
+                            f"本次为{abs(e.mom_pct) / std[0]:.1f}倍标准差）"
+                            if std[0] > 1e-9 else "")
                 alerts.append(Alert(channel="要素环比", element=n, mom_pct=e.mom_pct,
-                                    message=f"{n}环比变动{e.mom_pct:+.1f}%，超出±10%阈值"))
+                                    message=f"{n}环比变动{e.mom_pct:+.1f}%，"
+                                            f"超出±10%阈值{note}"))
         prev_m = _prev_month(month)
         if prev_m is None:
             return alerts

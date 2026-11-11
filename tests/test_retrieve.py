@@ -51,7 +51,8 @@ def test_chunk_metadata_contract():
     for c in chunks:
         assert c["tenant"] == C.TENANT
         assert c["doc_version"].startswith("V")
-        assert c["doc_type"] in ("formula", "process", "equipment", "gmp", "other")
+        assert c["doc_type"] in ("formula", "process", "equipment", "gmp",
+                                 "other", "history_record")   # A1：飞轮语料类型
         assert 0 < len(c["text"]) <= C.CHUNK_SIZE + C.CHUNK_OVERLAP
 
 

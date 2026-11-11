@@ -107,11 +107,13 @@ def test_benchmark_404(client):
 
 # ---------- 知识库热更新 ----------
 def test_kb_documents_listing(client):
-    """文档清单：7 份考题文档全部在列且已建索引，块数与块总数一致。"""
+    """文档清单：7 份考题文档全部在列且已建索引（飞轮语料存在时并列，带 origin），
+    块数与块总数严格对账。"""
     r = client.get("/api/kb/documents")
     assert r.status_code == 200
     d = r.json()
-    assert len(d["documents"]) == 7
+    exam = [doc for doc in d["documents"] if doc["origin"] == "考题知识库"]
+    assert len(exam) == 7
     assert all(doc["indexed"] for doc in d["documents"])
     assert sum(doc["indexed_chunks"] for doc in d["documents"]) == d["total_chunks"]
     assert d["job"]["state"] in ("idle", "done")

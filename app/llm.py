@@ -8,14 +8,67 @@
 """
 from __future__ import annotations
 
+import json
 import os
+from datetime import datetime
+from pathlib import Path
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from . import config as C
+
 
 class LLMError(Exception):
     """调用失败或返回不可解析。"""
+
+
+# ---------- token 成本实测（A2） ----------
+def record_usage(role: str, model: str, usage: dict,
+                 path: Path = C.TOKEN_USAGE_PATH) -> dict | None:
+    """把一次调用的 usage 追加写入 jsonl 用量日志。返回写入的记录。
+
+    旁路纪律：日志写失败绝不弄挂 LLM 主调用（调用方 try/except 兜底）。
+    字段原样取自 API 响应 usage（prompt/completion/total_tokens），不估算不编造。"""
+    if not usage:
+        return None
+    rec = {"ts": datetime.now().isoformat(timespec="seconds"), "role": role,
+           "model": model,
+           "prompt_tokens": usage.get("prompt_tokens"),
+           "completion_tokens": usage.get("completion_tokens"),
+           "total_tokens": usage.get("total_tokens")}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return rec
+
+
+def aggregate_usage(path: Path = C.TOKEN_USAGE_PATH) -> dict:
+    """聚合用量日志：总调用/总 token、按角色与模型分组、最近 20 条流水。
+    日志不存在如实返回零值——"未实测"与"实测为零"必须能区分。"""
+    if not path.exists():
+        return {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
+                "total_tokens": 0, "by_role": {}, "by_model": {}, "recent": []}
+    recs = [json.loads(line) for line in
+            path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    def _s(key, recs_):
+        return sum(r.get(key) or 0 for r in recs_)
+
+    def _group(field):
+        out: dict[str, dict] = {}
+        for r in recs:
+            g = out.setdefault(r.get(field) or "?",
+                               {"calls": 0, "total_tokens": 0})
+            g["calls"] += 1
+            g["total_tokens"] += r.get("total_tokens") or 0
+        return out
+
+    return {"calls": len(recs), "prompt_tokens": _s("prompt_tokens", recs),
+            "completion_tokens": _s("completion_tokens", recs),
+            "total_tokens": _s("total_tokens", recs),
+            "by_role": _group("role"), "by_model": _group("model"),
+            "recent": recs[-20:]}
 
 
 # ---------- 多模型协作：角色档案表（唯一出处） ----------
@@ -74,6 +127,7 @@ class LLMClient:
                               if "fallback" in profile else ""))
         self.temperature = profile["temperature"]
         self.timeout = timeout or profile["timeout"]
+        self.role = role
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=20),
            reraise=True)
@@ -97,7 +151,12 @@ class LLMClient:
                            json=payload,
                            timeout=self.timeout)
             r.raise_for_status()
-            return r.json()["choices"][0]["message"]["content"]
+            data = r.json()
+            try:
+                record_usage(self.role, self.model, data.get("usage") or {})
+            except Exception:
+                pass            # 用量日志是旁路，写失败绝不弄挂主调用（A2）
+            return data["choices"][0]["message"]["content"]
         except (httpx.HTTPError, KeyError, IndexError) as e:
             raise LLMError(f"LLM 调用失败: {e}") from e
 
