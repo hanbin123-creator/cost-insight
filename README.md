@@ -64,7 +64,7 @@ FastAPI/Pandas/Vue/ECharts 等依赖）的来源与许可证见 [NOTICE.md](NOTI
 
 ## 测试与质量
 
-- 后端 **174 项 pytest**（167 个测试函数含参数化展开；计算对账误差 0、路由仲裁边界、schema 闸、幂等核实）：`pytest tests/`
+- 后端 **209 项 pytest**（计算对账误差 0、路由仲裁边界、schema 闸、幂等核实、Agent 六意图）：`pytest tests/`
 - 前端 **76 项 vitest**（视图模型纯函数）：`cd web && npm run test`
 - 断网韧性：LLM/RPA 缺席自动降级且如实标注，服务不炸（CI 冒烟环境即无 LLM 密钥，顺带验证此路径）
 
