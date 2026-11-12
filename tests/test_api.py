@@ -168,6 +168,18 @@ def test_parse_report_name():
     assert _parse_report_name(Path("随便.docx")) is None               # 命名不合规
 
 
+def test_reports_skip_word_lockfile(client, tmp_path, monkeypatch):
+    """Word 打开中的 ~$ 临时锁文件不进归档、也不进 unknown_files。"""
+    import app.api as api_mod
+    (tmp_path / "银黄口服液_2026-05_月度成本分析报告.docx").write_bytes(b"x" * 100)
+    (tmp_path / "~$口服液_2026-05_月度成本分析报告.docx").write_bytes(b"lock")
+    monkeypatch.setattr(api_mod, "_REPORTS_DIR", tmp_path)
+    monkeypatch.setattr(api_mod, "_REGISTRY_PATH", tmp_path / ".registry.json")
+    d = client.get("/api/reports").json()
+    assert len(d["reports"]) == 1
+    assert d["unknown_files"] == []
+
+
 def test_reports_list_and_download(client):
     r = client.get("/api/reports")
     assert r.status_code == 200

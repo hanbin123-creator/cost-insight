@@ -272,6 +272,8 @@ def report_list() -> dict:
     groups: dict[str, dict] = {}
     unknown: list[str] = []
     for p in _REPORTS_DIR.iterdir():
+        if p.name.startswith("~$"):
+            continue                # Word 打开中的临时锁文件，不是报告
         if p.suffix.lower() not in _REPORT_SUFFIXES:
             continue
         meta = _parse_report_name(p)
