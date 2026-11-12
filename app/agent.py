@@ -26,7 +26,48 @@ _KEYWORDS = {
     "benchmark": ["对标", "二厂", "对比", "差异", "三步法"],
     "report": ["报告", "报表", "导出", "下载"],
     "dashboard": ["看板", "趋势", "仪表", "图表", "走势", "热力图", "热力"],
+    # qa/nav 弱词仅作兜底提示（主分类靠 LLM）：问答词不进其他四类，跳转需
+    # "动词+页名"双命中（见 _extract_view），单独的页名仍归原场景意图
+    "qa": ["为什么", "是什么", "怎么回事", "的原因", "如何", "规定"],
 }
+
+# 页面跳转（nav）：动词+页名双命中才判跳转，避免"下发整改任务"被误判为跳页
+_NAV_VERBS = ("打开", "切换", "跳转", "转到", "去看", "去看看", "进入")
+_NAV_TARGETS = {   # 页名 → 路由视图；长名先匹配（整改追踪 优先于 整改）
+    "整改追踪": "rectify", "整改页": "rectify", "整改看板": "rectify",
+    "整改": "rectify",
+    "报告中心": "reports", "报告页": "reports", "报告列表": "reports",
+    "知识库": "kb",
+    "对标分析": "benchmark", "对标页": "benchmark", "对标": "benchmark",
+    "成本看板": "dashboard", "看板": "dashboard",
+}
+_VIEW_NAMES = {"dashboard": "成本看板", "benchmark": "对标分析", "rectify": "整改追踪",
+                "reports": "报告中心", "kb": "知识库"}
+
+
+def _extract_view(text: str) -> str | None:
+    """跳转目标抽取：枚举制不猜测。无动词或无页名 → None（归原场景意图）。"""
+    if not any(v in text for v in _NAV_VERBS):
+        return None
+    for name in sorted(_NAV_TARGETS, key=len, reverse=True):
+        if name in text:
+            return _NAV_TARGETS[name]
+    return None
+
+
+# 场景意图 → 执行后联动前端动作（action 由前端执行；路由只分发不算数）
+def _make_action(intent: str, product: str | None, month: str | None,
+                 view: str | None = None) -> dict | None:
+    base = {"product": product, "month": month}
+    if intent == "report":
+        return {"type": "navigate", "view": "reports"}
+    if intent == "rectify":
+        return {"type": "navigate", "view": "rectify"}
+    if intent in ("dashboard", "benchmark"):
+        return {"type": "navigate", "view": intent, **base}
+    if intent == "nav" and view:
+        return {"type": "navigate", "view": view, **base}
+    return None                                     # qa：不跳，答案即产出
 
 # 产品别名：全称之外的常见叫法（抽取规则，枚举制不猜测）
 _PRODUCT_ALIAS = {"银黄": "银黄口服液", "板蓝根": "板蓝根颗粒",
@@ -82,8 +123,20 @@ def _extract_theme(text: str) -> dict:
     return {}
 
 
+def _choices_card(out_of_scope: bool = False) -> dict:
+    msg = ("本助手仅支持成本分析相关操作与问答（报告/看板/对标/整改/问答/跳转），"
+           "您的请求不在服务范围内。" if out_of_scope else
+           "我没完全理解您的意图，请选择要执行的操作：")
+    return {"message": msg,
+            "choices": [{"intent": s.intent, "name": s.name,
+                         "description": s.description} for s in SCENES.values()]}
+
+
 def _rule_classify(text: str) -> tuple[str | None, float]:
-    """关键词打分：命中词数最多者胜；零命中返回 None。"""
+    """关键词打分：命中词数最多者胜；零命中返回 None。
+    nav 前置：动词+页名双命中是确定性证据（"打开整改追踪"≠"下发整改任务"）。"""
+    if _extract_view(text):
+        return "nav", 0.9
     scores = {intent: sum(1 for kw in kws if kw in text)
               for intent, kws in _KEYWORDS.items()}
     best = max(scores, key=scores.get)
@@ -99,10 +152,14 @@ def _llm_classify(text: str, llm) -> tuple[str | None, float]:
     intents = "、".join(f"{k}（{SCENES[k].name}）" for k in SCENES)
     messages = [
         {"role": "system", "content": "你是制药企业成本分析系统的意图分类器。"
-         "把用户请求分类到四个意图之一：" + intents + "。\n"
+         "把用户请求分类到以下意图之一：" + intents + "。\n"
+         "判别要点：用户在提问（为什么/是什么/什么原因/怎么规定）→ qa；"
+         "用户想打开或切换到某个页面 → nav；"
+         "要生成/下载文件 → report；要看趋势指标 → dashboard；要和二厂对比 → benchmark；"
+         "要下发/督办整改任务 → rectify。\n"
          "纪律：①只输出 JSON: {\"intent\": \"...\", \"confidence\": 0.0-1.0}；"
          "②与成本分析无关的请求（闲聊、天气、其他领域、你不理解的内容），"
-         "intent 必须输出 \"none\"——禁止硬归到四个意图之一；"
+         "intent 必须输出 \"none\"——禁止硬归到意图之一；"
          "③拿不准但确属成本分析域的，confidence 给低分。"},
         {"role": "user", "content": text}]
     try:
@@ -115,15 +172,6 @@ def _llm_classify(text: str, llm) -> tuple[str | None, float]:
         return intent, conf
     except Exception:
         return None, 0.0
-
-
-def _choices_card(out_of_scope: bool = False) -> dict:
-    msg = ("本助手仅支持成本分析相关操作（报告/看板/对标/整改任务），"
-           "您的请求不在服务范围内。" if out_of_scope else
-           "我没完全理解您的意图，请选择要执行的操作：")
-    return {"message": msg,
-            "choices": [{"intent": s.intent, "name": s.name,
-                         "description": s.description} for s in SCENES.values()]}
 
 
 def route(text: str, pipeline: Pipeline, llm=None, latest_month: str = "2026-06",
@@ -155,29 +203,63 @@ def route(text: str, pipeline: Pipeline, llm=None, latest_month: str = "2026-06"
     base = {"intent": intent, "confidence": conf, "layer": layer,
             "classifier": classifier}
     if intent is None:
-        return {**base, "params": {}, "clarification": None,
-                "result": _choices_card(out_of_scope)}
+        return {**base, "action": None, "params": {}, "clarification": None,
+                "options": None, "result": _choices_card(out_of_scope)}
 
-    # —— 参数抽取（规则；显式入参优先；抽不出→澄清，绝不编造） ——
-    product = product or _extract_product(text)
-    month = month or _extract_month(text, latest_month)
-    theme_p = _extract_theme(text) if intent == "report" else {}
-    params = {k: v for k, v in (("product", product), ("month", month)) if v}
-    params.update(theme_p)
-    # 季度主题月份由 quarter 推导（季末月锚点），不强制用户报月份
-    missing = [k for k in ("product", "month") if k not in params]
-    if theme_p.get("theme") == "quarterly":
-        missing = [k for k in missing if k != "month"]
-        if "month" not in params:
-            from .compute import CostCalculator
-            params["month"] = month = \
-                CostCalculator.QUARTER_MONTHS[theme_p["quarter"]][-1]
-    if missing:
-        ask = "、".join("哪个产品" if k == "product" else "哪个月份" for k in missing)
-        return {**base, "params": params,
-                "clarification": f"请问要分析{ask}？（可选产品：{'、'.join(C.PRODUCTS)}）",
-                "result": None}
+    # —— 参数抽取（规则；文本明说优先于调用方上下文，抽不出才用上下文兜底；
+    #    两级都空→澄清，绝不编造） ——
+    # 优先级裁决（A9 修复）：用户在句子里明说的产品/月份 > 调用方传入（抽屉注入的
+    # 是当前看板上下文，属于环境而非意图——"生成板蓝根报告"不能产出银黄报告）。
+    # chips 点选场景文本里本就没有参数，抽取为空自然落到调用方入参，行为不变。
+    product = _extract_product(text) or product
+    month = _extract_month(text, latest_month) or month
 
-    ctx = AnalysisContext(product=product, month=month, params=theme_p)
-    return {**base, "params": params, "clarification": None,
-            "result": pipeline.run(intent, ctx)}
+    # qa/nav 免参数（问题/页面本身就是参数）；report/dashboard/benchmark/rectify
+    # 保持原有澄清纪律
+    if intent == "qa":
+        params: dict = {"question": text}
+    else:
+        theme_p = _extract_theme(text) if intent == "report" else {}
+        params = {k: v for k, v in (("product", product), ("month", month)) if v}
+        params.update(theme_p)
+        if intent == "nav":
+            view = _extract_view(text)
+            if not view:
+                # LLM 判了 nav 但页名抽不出 → 给页面选项，不猜目标
+                return {**base, "action": None, "params": params,
+                        "clarification": "请问要打开哪个页面？",
+                        "options": [{"label": n, "view": v}
+                                    for n, v in
+                                    [("成本看板", "dashboard"), ("对标分析", "benchmark"),
+                                     ("整改追踪", "rectify"), ("报告中心", "reports"),
+                                     ("知识库", "kb")]],
+                        "result": None}
+            params["view"] = view
+        else:
+            # 季度主题月份由 quarter 推导（季末月锚点），不强制用户报月份
+            missing = [k for k in ("product", "month") if k not in params]
+            if theme_p.get("theme") == "quarterly":
+                missing = [k for k in missing if k != "month"]
+                if "month" not in params:
+                    from .compute import CostCalculator
+                    params["month"] = month = \
+                        CostCalculator.QUARTER_MONTHS[theme_p["quarter"]][-1]
+            if missing:
+                ask = "、".join("哪个产品" if k == "product" else "哪个月份"
+                                for k in missing)
+                # 点选 chips：缺什么给什么，用户点一下比重打一句话省力
+                options = ([{"label": p, "product": p} for p in C.PRODUCTS]
+                           if "product" in missing else []) + \
+                          ([{"label": f"{m}月", "month": f"{latest_month[:4]}-{m:02d}"}
+                            for m in range(1, 7)] if "month" in missing else [])
+                return {**base, "action": None, "params": params,
+                        "clarification": f"请问要分析{ask}？",
+                        "options": options, "result": None}
+
+    ctx = AnalysisContext(product=product or "", month=month or "", params=params)
+    result = pipeline.run(intent, ctx)
+    # 执行成功才挂联动动作（跳转/筛选写入由前端执行，路由只分发）
+    action = _make_action(intent, product, month, params.get("view")) \
+        if result.get("ok") else None
+    return {**base, "action": action, "params": params, "clarification": None,
+            "options": None, "result": result}

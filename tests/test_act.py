@@ -287,7 +287,8 @@ def test_dispatch_unverified_when_remote_down(calc, db, monkeypatch):
 # ---------- 13. Pipeline 预设表 ----------
 
 def test_pipeline_scenes_registered():
-    assert set(SCENES) == {"report", "dashboard", "benchmark", "rectify"}
+    assert set(SCENES) == {"report", "dashboard", "benchmark", "rectify",
+                       "qa", "nav"}  # A9 扩展：+知识库问答/页面跳转
 
 
 def test_pipeline_unknown_intent_and_scene_degradation(calc):

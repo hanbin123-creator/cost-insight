@@ -2,18 +2,23 @@
  *  所有文案由后端字段摆放而成，数字不做任何再计算。 */
 import type { ChatResp, RpaTask } from './types'
 
+export type ClarifyOption = { label: string; product?: string; month?: string; view?: string }
+
 export type ReplyView =
-  | { kind: 'clarify'; text: string }
+  | { kind: 'clarify'; text: string; options?: ClarifyOption[] }
   | { kind: 'choices'; message: string; choices: { intent: string; name: string; description: string }[] }
-  | { kind: 'card'; scene: string; title: string; lines: string[] }
+  | { kind: 'card'; scene: string; title: string; lines: string[]; links?: { label: string; name: string }[] }
+  | { kind: 'qa'; mode: string; answer: string | null; note: string | null
+      citations: { doc_name: string; page: number; section: string }[]
+      snippets: { doc_name: string; page: number; section: string; text: string }[] }
   | { kind: 'error'; text: string }
 
 const signed = (v: unknown) =>
   typeof v === 'number' ? `${v > 0 ? '+' : ''}${v}` : '—'
 
-/** 把 /api/chat 的响应映射为抽屉可渲染的视图模型（四态：卡片/澄清/四入口/错误） */
+/** 把 /api/chat 的响应映射为抽屉可渲染的视图模型（五态：卡片/问答/澄清/入口/错误） */
 export function buildReplyView(r: ChatResp): ReplyView {
-  if (r.clarification) return { kind: 'clarify', text: r.clarification }
+  if (r.clarification) return { kind: 'clarify', text: r.clarification, options: r.options ?? undefined }
   const res = r.result
   if (!res) return { kind: 'error', text: '场景无产出（未注册意图）' }
   if (res.choices) return { kind: 'choices', message: res.message ?? '', choices: res.choices }
@@ -21,6 +26,20 @@ export function buildReplyView(r: ChatResp): ReplyView {
 
   const d = res.data ?? {}
   switch (res.intent) {
+    case 'qa':
+      return {
+        kind: 'qa',
+        mode: (d.mode as string) ?? 'no_hit',
+        answer: (d.answer as string | null) ?? null,
+        note: (d.note as string | null) ?? null,
+        citations: (d.citations as { doc_name: string; page: number; section: string }[]) ?? [],
+        snippets: (d.snippets as { doc_name: string; page: number; section: string; text: string }[]) ?? [],
+      }
+    case 'nav':
+      return {
+        kind: 'card', scene: 'nav', title: '页面跳转',
+        lines: ['正在为你打开目标页面…'],
+      }
     case 'dashboard':
       return {
         kind: 'card', scene: 'dashboard', title: '看板速览',
@@ -40,13 +59,15 @@ export function buildReplyView(r: ChatResp): ReplyView {
     case 'report': {
       const v = (d.verification ?? {}) as { verdict?: string }
       const verdict = { pass: '校验通过', auto_fixed: '通过（含自动补全）', rejected: '已拦截' }[v.verdict ?? ''] ?? '未知'
+      // 后端只回相对文件名；前端拼下载 URL 渲染成按钮（不再是服务器路径文本）
+      const links = [
+        d.docx ? { label: '下载 Word', name: d.docx as string } : null,
+        d.pdf ? { label: '下载 PDF', name: d.pdf as string } : null,
+      ].filter((x): x is { label: string; name: string } => x !== null)
       return {
         kind: 'card', scene: 'report', title: `报告已生成（${d.theme ?? '—'}）`,
-        lines: [
-          `Word：${d.docx ?? '—'}`,
-          d.pdf ? `PDF：${d.pdf}` : 'PDF：未产出（见后端警告）',
-          `校验：${verdict}`,
-        ],
+        lines: [`校验：${verdict}`, d.pdf ? '' : 'PDF：未产出（见后端警告）'].filter(Boolean),
+        links,
       }
     }
     case 'rectify': {

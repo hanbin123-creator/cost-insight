@@ -218,6 +218,10 @@ export interface ChatResp {
   classifier: string
   params: Record<string, string>
   clarification: string | null
+  /** 澄清点选项（chips）：缺产品/月份/页面目标时后端给出，点了重发 */
+  options?: { label: string; product?: string; month?: string; view?: string }[] | null
+  /** 场景执行成功后的联动动作（前端执行；路由只分发不算数） */
+  action?: { type: 'navigate'; view: string; product?: string | null; month?: string | null } | null
   result: ChatResult | null
 }
 

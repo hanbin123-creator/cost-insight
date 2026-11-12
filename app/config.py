@@ -99,3 +99,6 @@ RPA_ROSTER_PATH = ROOT / "config" / "rpa_assignees.yaml"   # 责任人名册（�
 # ---- Agent 意图路由（加分项 6.4）----
 INTENT_CONFIDENCE_THRESHOLD = 0.7      # 低于此置信度 → 四入口卡片让用户选（不猜）
 INTENT_LLM_TIMEOUT = 30.0              # 意图分类小模型超时（秒）
+# qa 意图"不硬答"阈值：RRF top1 低于此分 → 如实回"知识库未收录"。
+# 校准自 18 条评估集（域内下限 0.0323 / 域外上限 0.0320，余量仅 0.8%——薄，如实标注）
+QA_MIN_RRF_SCORE = 0.0321

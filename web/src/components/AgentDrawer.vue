@@ -26,7 +26,7 @@
 
       <div ref="msgBox" class="d-body">
         <div v-if="!messages.length" class="d-empty">
-          试着问我：「生成 2026-05 的月度报告」「银黄口服液对标二厂差多少」「下发整改任务」
+          直接问：「金银花为什么涨价」｜做：「生成 Q2 季度报告」｜去：「打开整改追踪」
         </div>
         <template v-for="(m, i) in messages" :key="i">
           <div v-if="m.role === 'user'" class="bubble user">
@@ -35,13 +35,35 @@
           </div>
           <div v-else class="bubble agent">
             <span v-if="needCtxTag(m.ctx, store.product, store.month)" class="ctx-tag">{{ m.ctx.product }}·{{ m.ctx.month }}</span>
-            <!-- 四态渲染：场景卡片 / 澄清 / 四入口 / 错误 -->
+            <!-- 五态渲染：场景卡片 / 问答 / 澄清 / 入口 / 错误 -->
             <template v-if="m.view.kind === 'card'">
               <div class="r-title">{{ m.view.title }}</div>
               <div v-for="(l, j) in m.view.lines" :key="j" class="r-line">{{ l }}</div>
+              <div v-if="m.view.links?.length" class="r-links">
+                <a v-for="lk in m.view.links" :key="lk.name" class="r-link"
+                   :href="api.reportUrl(lk.name)" :download="lk.name">{{ lk.label }}</a>
+              </div>
               <div class="r-meta">意图 {{ m.intent }} · 置信 {{ m.confidence }} · {{ m.layer }}</div>
             </template>
-            <template v-else-if="m.view.kind === 'clarify'">{{ m.view.text }}</template>
+            <template v-else-if="m.view.kind === 'qa'">
+              <div class="r-title">知识库问答</div>
+              <div v-if="m.view.answer" class="r-line">{{ m.view.answer }}</div>
+              <template v-else-if="m.view.snippets.length">
+                <div v-for="(s, j) in m.view.snippets" :key="j" class="r-snippet">
+                  《{{ s.doc_name }}》p{{ s.page }}：{{ s.text }}…
+                </div>
+              </template>
+              <div v-if="m.view.note" class="r-note">{{ m.view.note }}</div>
+              <div v-if="m.view.citations.length" class="r-cites">
+                出处：<span v-for="(c, j) in m.view.citations" :key="j" class="r-cite">《{{ c.doc_name }}》p{{ c.page }}</span>
+              </div>
+              <div class="r-note">以上来自知识库检索，精确数字以看板/报告为准</div>
+            </template>
+            <template v-else-if="m.view.kind === 'clarify'">
+              <div>{{ m.view.text }}</div>
+              <button v-for="o in m.view.options" :key="o.label" class="choice"
+                @click="pickOption(o)"><strong>{{ o.label }}</strong></button>
+            </template>
             <template v-else-if="m.view.kind === 'choices'">
               <div>{{ m.view.message }}</div>
               <button v-for="c in m.view.choices" :key="c.intent" class="choice"
@@ -66,7 +88,8 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import { api } from '../api'
-import { buildReplyView } from '../agentCards'
+import { buildReplyView, type ClarifyOption } from '../agentCards'
+import { navigate, type RouteName } from '../router'
 import {
   clearChat,
   loadChat,
@@ -119,10 +142,54 @@ function confirmAttribution() {
   })
 }
 
+// 页面中文名（action 回执气泡用）
+const VIEW_LABELS: Record<string, string> = {
+  dashboard: '成本看板', benchmark: '对标分析', rectify: '整改追踪',
+  reports: '报告中心', kb: '知识库',
+}
+
+// 执行后端下发的联动动作（路由只分发不算数：跳转/筛选写入是前端唯一执行点）
+function execAction(a: { type: string; view?: string; product?: string | null; month?: string | null }) {
+  if (a.type !== 'navigate' || !a.view) return
+  if (a.product && store.products.includes(a.product)) store.product = a.product
+  if (a.month) store.month = a.month
+  navigate(a.view as RouteName)
+  messages.value.push({
+    role: 'agent',
+    view: { kind: 'clarify', text: `已为你切换到「${VIEW_LABELS[a.view] ?? a.view}」` },
+    ctx: curCtx(), ts: Date.now(),
+  })
+}
+
+// 澄清 chips 点选：页面目标直接跳；产品/月份带着原句重发（显式参数优先）
+const lastText = ref('')
+async function pickOption(o: ClarifyOption) {
+  if (o.view) { execAction({ type: 'navigate', view: o.view }); return }
+  if (!lastText.value) return
+  sending.value = true
+  try {
+    const r = await api.chat(lastText.value, o.product ?? store.product, o.month ?? store.month)
+    messages.value.push({
+      role: 'agent', view: buildReplyView(r),
+      intent: r.intent ?? 'none', confidence: r.confidence, layer: r.layer,
+      ctx: curCtx(), ts: Date.now(),
+    })
+    if (r.action) execAction(r.action)
+  } catch (e) {
+    messages.value.push({
+      role: 'agent', view: { kind: 'error', text: e instanceof Error ? e.message : String(e) },
+      ctx: curCtx(), ts: Date.now(),
+    })
+  } finally {
+    sending.value = false
+  }
+}
+
 async function send(text: string) {
   const t = text.trim()
   if (!t || sending.value) return
   draft.value = ''
+  lastText.value = t
   messages.value.push({ role: 'user', text: t, view: { kind: 'clarify', text: t }, ctx: curCtx(), ts: Date.now() })
   sending.value = true
   try {
@@ -132,6 +199,7 @@ async function send(text: string) {
       intent: r.intent ?? 'none', confidence: r.confidence, layer: r.layer,
       ctx: curCtx(), ts: Date.now(),
     })
+    if (r.action) execAction(r.action)
   } catch (e) {
     messages.value.push({
       role: 'agent', view: { kind: 'error', text: e instanceof Error ? e.message : String(e) },
@@ -203,6 +271,21 @@ async function send(text: string) {
   background: #fff; color: var(--text-num); font-size: 12px; box-shadow: var(--shadow);
 }
 .choice:hover { background: rgba(46, 109, 164, 0.08); }
+
+/* qa 卡片与下载链接 */
+.r-links { display: flex; gap: 8px; margin-top: 8px; }
+.r-link {
+  display: inline-block; padding: 5px 12px; border-radius: 8px; font-size: 12px;
+  background: var(--primary); color: #fff; text-decoration: none;
+}
+.r-link:hover { background: var(--primary-hover); }
+.r-snippet {
+  margin-top: 6px; padding: 6px 9px; border-radius: 8px; background: #fff;
+  font-size: 11.5px; color: var(--text-unit); line-height: 1.6; box-shadow: var(--shadow);
+}
+.r-note { margin-top: 6px; font-size: 10.5px; color: var(--text-label); }
+.r-cites { margin-top: 6px; font-size: 10.5px; color: var(--text-label); }
+.r-cite { margin-right: 6px; }
 
 .d-foot { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #eef1f6; }
 .d-foot input {
