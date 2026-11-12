@@ -381,6 +381,7 @@ class ChatRequest(BaseModel):
     text: str
     product: str | None = None   # 显式参数优先于文本抽取
     month: str | None = None
+    view: str | None = None      # 调用方当前页面（A11 指代消解的清单上下文）
 
 
 def _latest_month() -> str:
@@ -405,9 +406,11 @@ async def chat(req: ChatRequest) -> dict:
         classifier = None                     # 无 LLM → 规则兜底轨，服务不炸
     deps = Deps(calc=_State.calc, retriever=_State.retriever,
                 charts=_State.charts, llm_factory=_try_llm)
+    # A11：知识库文档名清单作为内容级跳转的动态锚点候选（kb:doc:<文档名>）
+    kb_docs = sorted({c["doc_name"] for c in _State.retriever.chunks})
     return await run_in_threadpool(
         route, req.text, Pipeline(deps), classifier, _latest_month(),
-        req.product, req.month)
+        req.product, req.month, req.view, kb_docs)
 
 
 # ---------- 对标分析（薄端点：算好的双向口径直接透出） ----------

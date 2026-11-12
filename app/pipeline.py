@@ -113,9 +113,10 @@ def _run_qa(d: Deps, ctx: AnalysisContext) -> dict:
 
 
 def _run_nav(d: Deps, ctx: AnalysisContext) -> dict:
-    """页面跳转意图（nav）：不执行任何业务场景，只回目标视图——
-    跳转由前端 action 执行（路由只分发的字面兑现）。"""
-    return {"view": ctx.params.get("view")}
+    """页面跳转意图（nav）：不执行任何业务场景，只回目标视图与内容锚点——
+    跳转由前端 action 执行（路由只分发的字面兑现）。anchor 为 A11 内容级定位。"""
+    return {"view": ctx.params.get("view"), "anchor": ctx.params.get("anchor"),
+            "anchor_title": ctx.params.get("anchor_title")}
 
 
 @dataclass(frozen=True)

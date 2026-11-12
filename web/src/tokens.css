@@ -39,3 +39,10 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); font-family: var(--font-text); color: var(--text-num); }
+
+/* A11 内容级锚点定位高亮：Agent 跳转目标闪烁 2 秒（focus.ts 挂载/移除） */
+@keyframes anchor-flash-pulse {
+  0%, 60% { box-shadow: 0 0 0 3px rgba(46, 109, 164, 0.55); border-radius: 12px; }
+  100% { box-shadow: 0 0 0 0 rgba(46, 109, 164, 0); }
+}
+.anchor-flash { animation: anchor-flash-pulse 2s ease-out; }

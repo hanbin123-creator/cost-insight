@@ -55,7 +55,9 @@
               </template>
               <div v-if="m.view.note" class="r-note">{{ m.view.note }}</div>
               <div v-if="m.view.citations.length" class="r-cites">
-                出处：<span v-for="(c, j) in m.view.citations" :key="j" class="r-cite">《{{ c.doc_name }}》p{{ c.page }}</span>
+                出处：<button v-for="(c, j) in m.view.citations" :key="j" class="r-cite r-cite-btn"
+                  :title="'跳到知识库定位《' + c.doc_name + '》'"
+                  @click="gotoDoc(c.doc_name)">《{{ c.doc_name }}》p{{ c.page }} →</button>
               </div>
               <div class="r-note">以上来自知识库检索，精确数字以看板/报告为准</div>
             </template>
@@ -89,7 +91,7 @@
 import { nextTick, ref, watch } from 'vue'
 import { api } from '../api'
 import { buildReplyView, type ClarifyOption } from '../agentCards'
-import { navigate, type RouteName } from '../router'
+import { navigate, useRoute, type RouteName } from '../router'
 import {
   clearChat,
   loadChat,
@@ -115,6 +117,7 @@ const msgBox = ref<HTMLElement | null>(null)
 watch(messages, (list) => saveChat(list), { deep: true })
 
 const curCtx = (): ChatCtx => ({ product: store.product, month: store.month })
+const route = useRoute()   // A11：当前页面上报后端，供指代消解（"这张图"）列内容清单
 
 function clearAll() {
   clearChat()
@@ -149,26 +152,36 @@ const VIEW_LABELS: Record<string, string> = {
 }
 
 // 执行后端下发的联动动作（路由只分发不算数：跳转/筛选写入是前端唯一执行点）
-function execAction(a: { type: string; view?: string; product?: string | null; month?: string | null }) {
+// A11：anchor 存在时跳到页内指定内容块（data-anchor 元素滚动+高亮）
+function execAction(a: { type: string; view?: string; product?: string | null; month?: string | null
+                         anchor?: string | null; anchor_title?: string | null }) {
   if (a.type !== 'navigate' || !a.view) return
   if (a.product && store.products.includes(a.product)) store.product = a.product
   if (a.month) store.month = a.month
-  navigate(a.view as RouteName)
+  navigate(a.view as RouteName, a.anchor ?? undefined)
+  const where = a.anchor_title
+    ? `「${VIEW_LABELS[a.view] ?? a.view} · ${a.anchor_title}」`
+    : `「${VIEW_LABELS[a.view] ?? a.view}」`
   messages.value.push({
     role: 'agent',
-    view: { kind: 'clarify', text: `已为你切换到「${VIEW_LABELS[a.view] ?? a.view}」` },
+    view: { kind: 'clarify', text: `已为你切换到${where}` },
     ctx: curCtx(), ts: Date.now(),
   })
 }
 
-// 澄清 chips 点选：页面目标直接跳；产品/月份带着原句重发（显式参数优先）
+// A11 问答出处联动：点出处 → 知识库页定位到该文档
+function gotoDoc(docName: string) {
+  execAction({ type: 'navigate', view: 'kb', anchor: `kb:doc:${docName}`, anchor_title: docName })
+}
+
+// 澄清 chips 点选：页面/内容目标直接跳（带锚点定位）；产品/月份带着原句重发（显式参数优先）
 const lastText = ref('')
 async function pickOption(o: ClarifyOption) {
-  if (o.view) { execAction({ type: 'navigate', view: o.view }); return }
+  if (o.view) { execAction({ type: 'navigate', view: o.view, anchor: o.anchor ?? null, anchor_title: o.anchor ? o.label : null }); return }
   if (!lastText.value) return
   sending.value = true
   try {
-    const r = await api.chat(lastText.value, o.product ?? store.product, o.month ?? store.month)
+    const r = await api.chat(lastText.value, o.product ?? store.product, o.month ?? store.month, route.current)
     messages.value.push({
       role: 'agent', view: buildReplyView(r),
       intent: r.intent ?? 'none', confidence: r.confidence, layer: r.layer,
@@ -193,7 +206,7 @@ async function send(text: string) {
   messages.value.push({ role: 'user', text: t, view: { kind: 'clarify', text: t }, ctx: curCtx(), ts: Date.now() })
   sending.value = true
   try {
-    const r = await api.chat(t, store.product, store.month)  // 上下文自动注入
+    const r = await api.chat(t, store.product, store.month, route.current)  // 上下文自动注入
     messages.value.push({
       role: 'agent', view: buildReplyView(r),
       intent: r.intent ?? 'none', confidence: r.confidence, layer: r.layer,
@@ -286,6 +299,12 @@ async function send(text: string) {
 .r-note { margin-top: 6px; font-size: 10.5px; color: var(--text-label); }
 .r-cites { margin-top: 6px; font-size: 10.5px; color: var(--text-label); }
 .r-cite { margin-right: 6px; }
+.r-cite-btn {
+  border: none; background: none; cursor: pointer; padding: 0;
+  font-size: 10.5px; color: var(--primary); text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.r-cite-btn:hover { color: var(--primary-hover); }
 
 .d-foot { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #eef1f6; }
 .d-foot input {

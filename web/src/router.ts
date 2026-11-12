@@ -22,13 +22,25 @@ export function parseHash(hash: string): RouteName {
   return (ROUTES as readonly string[]).includes(name) ? (name as RouteName) : 'dashboard'
 }
 
+/** A11 内容级定位：解析 hash 中的 ?focus=<anchor>；无则 null。纯函数可单测 */
+export function parseFocus(hash: string): string | null {
+  const m = hash.match(/[?&]focus=([^&]+)/)
+  return m ? decodeURIComponent(m[1]) : null
+}
+
 // 浏览器侧状态与监听：node 测试环境无 window，守卫跳过（路由解析逻辑由 parseHash 单测覆盖）
 const isBrowser = typeof window !== 'undefined'
-const state = reactive({ current: isBrowser ? parseHash(window.location.hash) : 'dashboard' as RouteName })
+const state = reactive({
+  current: isBrowser ? parseHash(window.location.hash) : 'dashboard' as RouteName,
+  focus: null as string | null,   // A11 内容锚点（?focus=）
+  focusSeq: 0,                    // 每次 hash 变化 +1：同一锚点重复跳转也能触发 watch
+})
 
 if (isBrowser) {
   window.addEventListener('hashchange', () => {
     state.current = parseHash(window.location.hash)
+    state.focus = parseFocus(window.location.hash)
+    state.focusSeq++
   })
 }
 
@@ -36,6 +48,8 @@ export function useRoute() {
   return state
 }
 
-export function navigate(to: RouteName) {
-  if (isBrowser) window.location.hash = `#/${to}`
+export function navigate(to: RouteName, focus?: string) {
+  if (isBrowser) {
+    window.location.hash = focus ? `#/${to}?focus=${encodeURIComponent(focus)}` : `#/${to}`
+  }
 }

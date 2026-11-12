@@ -2,7 +2,8 @@
  *  所有文案由后端字段摆放而成，数字不做任何再计算。 */
 import type { ChatResp, RpaTask } from './types'
 
-export type ClarifyOption = { label: string; product?: string; month?: string; view?: string }
+export type ClarifyOption = { label: string; product?: string; month?: string; view?: string
+                              anchor?: string }
 
 export type ReplyView =
   | { kind: 'clarify'; text: string; options?: ClarifyOption[] }

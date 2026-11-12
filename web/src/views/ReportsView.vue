@@ -13,7 +13,7 @@
       </div>
       <div class="ab-right">
         <!-- A2：LLM token 用量实测一行览（无调用全零如实显示） -->
-        <span v-if="usage" class="usage-line" title="LLM 调用用量（按 API 响应 usage 逐次落盘聚合）">
+        <span v-if="usage" class="usage-line" data-anchor="reports:usage" title="LLM 调用用量（按 API 响应 usage 逐次落盘聚合）">
           LLM 调用 {{ usage.calls }} 次 · {{ fmtTokens(usage.total_tokens) }} tokens
         </span>
         <!-- A3：签发人（人工签发留痕用；不用 window.prompt——嵌入式 webview 不支持） -->
@@ -57,7 +57,7 @@
     </div>
 
     <!-- 时间轴归档（服务端已按 mtime 倒序） -->
-    <section class="panel timeline">
+    <section class="panel timeline" data-anchor="reports:list">
       <h3>报告归档<span class="count">{{ data?.reports.length ?? 0 }}</span></h3>
       <div v-if="loading" class="state">加载中…</div>
       <div v-else-if="loadError" class="state error">⚠ {{ loadError }}</div>
@@ -103,9 +103,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '../api'
+import { useFocusAnchor } from '../focus'
 import { fmtMtime, fmtSize, themeLabel, validateReportParams } from '../archiveHelpers'
 import { store } from '../store'
 import type { ReportItem, ReportsResp, UsageResp } from '../types'
+
+// A11：Agent 内容级跳转（?focus=reports:list 等）→ 滚动定位 + 高亮闪烁
+useFocusAnchor()
 
 const THEMES = [
   { key: 'monthly', label: '月度报告' },

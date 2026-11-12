@@ -43,7 +43,7 @@
     </section>
 
     <!-- 看板三列 -->
-    <div v-if="data?.ok" class="kanban">
+    <div v-if="data?.ok" class="kanban" data-anchor="rectify:kanban">
       <section v-for="col in cols" :key="col" class="kcol panel">
         <h3>{{ KANBAN_TITLES[col] }}<span class="count">{{ grouped[col].length }}</span></h3>
         <div v-if="!grouped[col].length" class="empty">暂无任务</div>
@@ -70,9 +70,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../api'
+import { useFocusAnchor } from '../focus'
 import { groupTasks, KANBAN_TITLES, type KanbanCol } from '../agentCards'
 import { store } from '../store'
 import type { TrackingResp } from '../types'
+
+// A11：Agent 内容级跳转（?focus=rectify:kanban）→ 滚动定位 + 高亮闪烁
+useFocusAnchor()
 
 const data = ref<TrackingResp | null>(null)
 const loading = ref(false)

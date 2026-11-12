@@ -35,7 +35,7 @@
     </section>
 
     <!-- 文档管理 -->
-    <section class="panel docs">
+    <section class="panel docs" data-anchor="kb:docs">
       <div class="docs-head">
         <h3>文档管理<span class="count">{{ docs?.documents.length ?? 0 }}</span></h3>
         <div class="docs-actions">
@@ -54,7 +54,7 @@
           <tr><th>文档</th><th>大小</th><th>索引块</th><th>版本</th><th>状态</th><th></th></tr>
         </thead>
         <tbody>
-          <tr v-for="d in docs.documents" :key="d.name">
+          <tr v-for="d in docs.documents" :key="d.name" :data-anchor="`kb:doc:${d.name}`">
             <td class="d-name">
               {{ d.name }}
               <span v-if="d.origin === '数据飞轮'" class="origin-badge" title="整改闭环经验回流沉淀的语料（数据飞轮 A1）">飞轮</span>
@@ -80,8 +80,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '../api'
+import { useFocusAnchor } from '../focus'
 import { channelLabel, fmtSize, jobStateText, snippet } from '../archiveHelpers'
 import type { KbDocsResp, KbQueryResp } from '../types'
+
+// A11：Agent 内容级跳转（?focus=kb:doc:<文档名> 等）→ 滚动定位 + 高亮闪烁
+useFocusAnchor()
 
 const q = ref('')
 const searching = ref(false)

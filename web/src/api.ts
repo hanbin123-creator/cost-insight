@@ -43,8 +43,8 @@ export const api = {
     post<RectifyDispatchResp>('/rectify/dispatch', { product: p, month: m, speed }),
   benchmark: (p: string, m: string) =>
     get<BenchmarkResp>(`/benchmark/${encodeURIComponent(p)}/${m}`),
-  chat: (text: string, p?: string, m?: string) =>
-    post<ChatResp>('/chat', { text, product: p, month: m }),
+  chat: (text: string, p?: string, m?: string, view?: string) =>
+    post<ChatResp>('/chat', { text, product: p, month: m, view }),
   rectifyTracking: () => get<TrackingResp>('/rectify/tracking'),
   // F8 报告中心
   reports: () => get<ReportsResp>('/reports'),

@@ -1,7 +1,9 @@
 <template>
   <div>
     <!-- F2：KPI 看板行（大数字卡 + 语义色边条，≤6 卡） -->
-    <KpiRow :metrics="metrics" :error="metricsError" />
+    <div data-anchor="dashboard:kpi">
+      <KpiRow :metrics="metrics" :error="metricsError" />
+    </div>
 
     <!-- Agent 决策横幅：系统自主判断并说明理由（F5 增量将升级为抽屉+决策卡流） -->
     <div v-if="decision" class="decision" :class="decision.action">
@@ -20,22 +22,30 @@
     </div>
 
     <!-- F3：告警行动卡片列——每条告警可处置：确认 / 生成归因 / 下发整改 -->
-    <AlertActionCards v-if="metrics && metrics.alerts.length"
-      :alerts="metrics.alerts" :product="store.product" :month="store.month"
-      :attr-loading="attrLoading" @generate="generateFromAlert" />
+    <div v-if="metrics && metrics.alerts.length" data-anchor="dashboard:alerts">
+      <AlertActionCards
+        :alerts="metrics.alerts" :product="store.product" :month="store.month"
+        :attr-loading="attrLoading" @generate="generateFromAlert" />
+    </div>
 
     <!-- F4：主从布局——趋势主图（2/3 宽加高）＋ 右侧结构/瀑布堆叠 ＋ 热力图全宽沉底 -->
     <main class="grid">
-      <ChartPanel class="area-trend" title="趋势图 · 近6月单位成本与要素走势"
-        :option="trendOpt" :loading="loading.trend" :error="errors.trend" tall />
+      <div class="area-trend" data-anchor="dashboard:trend">
+        <ChartPanel title="趋势图 · 近6月单位成本与要素走势"
+          :option="trendOpt" :loading="loading.trend" :error="errors.trend" tall />
+      </div>
       <div class="area-side">
-        <ChartPanel title="结构图 · 本月成本构成" :option="structureOpt"
-          :loading="loading.structure" :error="errors.structure" />
-        <ChartPanel title="瀑布图 · 成本变动分解" :option="waterfallOpt"
-          :loading="loading.waterfall" :error="errors.waterfall" />
+        <div data-anchor="dashboard:structure">
+          <ChartPanel title="结构图 · 本月成本构成" :option="structureOpt"
+            :loading="loading.structure" :error="errors.structure" />
+        </div>
+        <div data-anchor="dashboard:waterfall">
+          <ChartPanel title="瀑布图 · 成本变动分解" :option="waterfallOpt"
+            :loading="loading.waterfall" :error="errors.waterfall" />
+        </div>
       </div>
       <!-- 表格式热力图（方案二+产品分区）：数字直读+色阶双通道，点击格子联动看板 -->
-      <section class="panel area-heat heat-panel">
+      <section class="panel area-heat heat-panel" data-anchor="dashboard:heatmap">
         <div class="hp-head">
           <h3>热力图（表格式）· 产品×月份×要素环比（加分项）</h3>
           <span class="hp-hint">点击格子可切换看板的产品与月份；左上角 ◤ 三角 = 当前看板所选</span>
@@ -53,7 +63,7 @@
       </button>
     </div>
 
-    <AttributionPanel id="attr-panel" :report="report" :loading="attrLoading"
+    <AttributionPanel id="attr-panel" data-anchor="dashboard:attribution" :report="report" :loading="attrLoading"
       :error="attrError" :demo-mode="demoMode" />
   </div>
 </template>
@@ -64,6 +74,7 @@ import { api, loadDemoAttribution } from '../api'
 import { themeLabel } from '../archiveHelpers'
 import { navigate } from '../router'
 import { store } from '../store'
+import { useFocusAnchor } from '../focus'
 import { structureOption, trendOption, waterfallOption } from '../charts/options'
 import ChartPanel from '../components/ChartPanel.vue'
 import AttributionPanel from '../components/AttributionPanel.vue'
@@ -169,6 +180,9 @@ async function generate() {
 }
 
 watch(() => [store.product, store.month], refresh, { immediate: true })
+
+// A11：Agent 内容级跳转（?focus=dashboard:heatmap 等）→ 滚动定位 + 高亮闪烁
+useFocusAnchor()
 
 // F5 决策卡片流：Agent 抽屉"确认生成归因"跨视图触发（计数器变化即执行）
 watch(() => store.attributionRequest, (n, o) => {

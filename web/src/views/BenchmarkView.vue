@@ -11,7 +11,7 @@
         :option="butterflyOpt" :loading="false" :error="null" tall />
 
       <!-- V1 双向对比表：明细口径（差异率两个方向并列，杜绝口径歧义） -->
-      <section class="panel">
+      <section class="panel" data-anchor="benchmark:table">
         <h3>双向口径明细<span class="hint">两个方向的差异率均由后端计算，本表只读</span></h3>
         <div class="table-wrap">
           <table>
@@ -45,7 +45,7 @@
       </section>
 
       <!-- 材料差异下钻：估算口径明确标注（后端按成本占比分摊） -->
-      <section class="panel">
+      <section class="panel" data-anchor="benchmark:materials">
         <h3>材料差异下钻<span class="hint">估算口径：按材料成本占比分摊总差异（后端标注），非逐料实测</span></h3>
         <div class="table-wrap">
           <table>
@@ -70,10 +70,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { api } from '../api'
+import { useFocusAnchor } from '../focus'
 import { store } from '../store'
 import { butterflyOption } from '../charts/options'
 import ChartPanel from '../components/ChartPanel.vue'
 import type { BenchmarkResp } from '../types'
+
+// A11：Agent 内容级跳转（?focus=benchmark:table 等）→ 滚动定位 + 高亮闪烁
+useFocusAnchor()
 
 const data = ref<BenchmarkResp | null>(null)
 const loading = ref(false)

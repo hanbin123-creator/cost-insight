@@ -17,6 +17,7 @@ import json
 import re
 
 from . import config as C
+from .content_registry import CONTENT_TARGETS, find_anchor, targets_for_view
 from .context import AnalysisContext
 from .pipeline import SCENES, Pipeline
 
@@ -55,9 +56,73 @@ def _extract_view(text: str) -> str | None:
     return None
 
 
+def _has_nav_verb(text: str) -> bool:
+    return any(v in text for v in _NAV_VERBS)
+
+
+def _extract_anchor(text: str, kb_docs: list[str] | None = None) -> dict | None:
+    """内容锚点抽取（A11）：注册表关键词（长词优先）→ 知识库文档名 token 重叠。
+    枚举制不猜测：只返回清单内条目；命中文档返回 kb:doc:<文档名>。"""
+    best: tuple[str, dict] | None = None
+    for t in CONTENT_TARGETS:
+        for kw in t["keywords"]:
+            if kw in text and (best is None or len(kw) > len(best[0])):
+                best = (kw, t)
+    if best:
+        return {"anchor": best[1]["anchor"], "view": best[1]["view"],
+                "title": best[1]["title"]}
+    # 文档名匹配前先做产品别名归一（"银黄配方文档"里的"银黄"→"银黄口服液"），
+    # 与参数抽取同一套别名表，不另造规则
+    norm = text
+    for alias, full in _PRODUCT_ALIAS.items():
+        if alias in text and full not in text:
+            norm = norm.replace(alias, full)
+    for name in kb_docs or []:
+        stem = name.rsplit(".", 1)[0]
+        if stem and (stem in text or stem in norm):
+            return {"anchor": f"kb:doc:{name}", "view": "kb", "title": stem}
+        tokens = []
+        for tok in re.split(r"[_\s.]+", stem):
+            for g in ("产品", "文档", "记录", "清单", "企业", "公司"):
+                tok = tok.replace(g, "")
+            if len(tok) >= 2:
+                tokens.append(tok)
+        if tokens and sum(1 for tok in tokens if tok in norm) >= 2:
+            return {"anchor": f"kb:doc:{name}", "view": "kb", "title": stem}
+    return None
+
+
+def _llm_pick_anchor(text: str, cur_view: str | None, llm) -> dict | None:
+    """指代消解（A11 第二趟 LLM，仅 nav 意图且规则抽不出目标时触发）：
+    把当前页可见内容清单给模型做选择题——只能选清单内 id 或 null，
+    选不出/选串台/调用失败一律 None，落澄清 chips（清单外无目标，不猜）。"""
+    if llm is None or not cur_view:
+        return None
+    cands = targets_for_view(cur_view)
+    if not cands:
+        return None
+    listing = "\n".join(f"- {t['anchor']}：{t['title']}" for t in cands)
+    try:
+        data = json.loads(llm.chat([
+            {"role": "system", "content":
+             "你是界面导航助手。用户在当前页面说了一句话，判断 TA 想查看下方清单中的"
+             "哪一块内容。纪律：①只能从清单选 anchor；②指向不明输出 null；"
+             "③只输出 JSON：{\"anchor\": \"...\" 或 null}。"},
+            {"role": "user", "content": f"用户的话：{text}\n\n当前页可见内容清单：\n{listing}"}],
+            json_mode=True))
+        anchor = data.get("anchor")
+    except Exception:
+        return None
+    t = find_anchor(anchor)
+    if t and t["view"] == cur_view:      # 串台防御：只接受当前页条目
+        return {"anchor": t["anchor"], "view": t["view"], "title": t["title"]}
+    return None
+
+
 # 场景意图 → 执行后联动前端动作（action 由前端执行；路由只分发不算数）
 def _make_action(intent: str, product: str | None, month: str | None,
-                 view: str | None = None) -> dict | None:
+                 view: str | None = None, anchor: str | None = None,
+                 anchor_title: str | None = None) -> dict | None:
     base = {"product": product, "month": month}
     if intent == "report":
         return {"type": "navigate", "view": "reports"}
@@ -66,7 +131,11 @@ def _make_action(intent: str, product: str | None, month: str | None,
     if intent in ("dashboard", "benchmark"):
         return {"type": "navigate", "view": intent, **base}
     if intent == "nav" and view:
-        return {"type": "navigate", "view": view, **base}
+        a = {"type": "navigate", "view": view, **base}
+        if anchor:                       # A11 内容级定位（可选，前端缺失时退化为页面级）
+            a["anchor"] = anchor
+            a["anchor_title"] = anchor_title
+        return a
     return None                                     # qa：不跳，答案即产出
 
 # 产品别名：全称之外的常见叫法（抽取规则，枚举制不猜测）
@@ -132,10 +201,11 @@ def _choices_card(out_of_scope: bool = False) -> dict:
                          "description": s.description} for s in SCENES.values()]}
 
 
-def _rule_classify(text: str) -> tuple[str | None, float]:
+def _rule_classify(text: str, kb_docs: list[str] | None = None) -> tuple[str | None, float]:
     """关键词打分：命中词数最多者胜；零命中返回 None。
-    nav 前置：动词+页名双命中是确定性证据（"打开整改追踪"≠"下发整改任务"）。"""
-    if _extract_view(text):
+    nav 前置：动词+页名 或 动词+内容锚点（A11）双命中是确定性证据
+    （"打开整改追踪"≠"下发整改任务"；"打开热力图"≠"看看热力图"）。"""
+    if _extract_view(text) or (_has_nav_verb(text) and _extract_anchor(text, kb_docs)):
         return "nav", 0.9
     scores = {intent: sum(1 for kw in kws if kw in text)
               for intent, kws in _KEYWORDS.items()}
@@ -155,6 +225,8 @@ def _llm_classify(text: str, llm) -> tuple[str | None, float]:
          "把用户请求分类到以下意图之一：" + intents + "。\n"
          "判别要点：用户在提问（为什么/是什么/什么原因/怎么规定）→ qa；"
          "用户想打开或切换到某个页面 → nav；"
+         "用户想查看页面里的某块内容/某张图/某份文档（即使没说页面名，"
+         "如“打开这张图”“看下那个瀑布”“打开热力图”）→ nav；"
          "要生成/下载文件 → report；要看趋势指标 → dashboard；要和二厂对比 → benchmark；"
          "要下发/督办整改任务 → rectify。\n"
          "纪律：①只输出 JSON: {\"intent\": \"...\", \"confidence\": 0.0-1.0}；"
@@ -175,8 +247,11 @@ def _llm_classify(text: str, llm) -> tuple[str | None, float]:
 
 
 def route(text: str, pipeline: Pipeline, llm=None, latest_month: str = "2026-06",
-          product: str | None = None, month: str | None = None) -> dict:
-    """意图路由主入口。返回契约见 /api/chat 文档；result 为场景产出或四入口卡片。"""
+          product: str | None = None, month: str | None = None,
+          view: str | None = None, kb_docs: list[str] | None = None) -> dict:
+    """意图路由主入口。返回契约见 /api/chat 文档；result 为场景产出或四入口卡片。
+    view=调用方当前页面（A11 指代消解的清单上下文）；kb_docs=知识库文档名清单
+    （内容级跳转的动态锚点候选）。两者均可缺省，缺省时行为与 A9 完全一致。"""
     # —— 意图分类：LLM 主线 → 规则兜底 → 四入口 ——
     intent, conf, layer = None, 0.0, "fallback"
     classifier = "none"
@@ -195,7 +270,7 @@ def route(text: str, pipeline: Pipeline, llm=None, latest_month: str = "2026-06"
         # LLM 缺席/失败 → 规则兜底（layer=rule）；LLM 低置信但规则硬命中 →
         # 确定性证据优先（layer=rule-arb，如实标注"规则仲裁了模型的没把握"）。
         # 用户亲自打出的关键词是硬证据，不属于"猜"；双不命中才四入口。
-        rule_intent, rule_conf = _rule_classify(text)
+        rule_intent, rule_conf = _rule_classify(text, kb_docs)
         if rule_intent:
             # 先定 layer 再覆盖 conf——判断依据是"模型原始置信度"而非规则置信度
             layer = "rule" if (llm is None or conf == 0.0) else "rule-arb"
@@ -223,18 +298,32 @@ def route(text: str, pipeline: Pipeline, llm=None, latest_month: str = "2026-06"
         params = {k: v for k, v in (("product", product), ("month", month)) if v}
         params.update(theme_p)
         if intent == "nav":
-            view = _extract_view(text)
-            if not view:
-                # LLM 判了 nav 但页名抽不出 → 给页面选项，不猜目标
+            # A11 内容级目标解析：页名（动词+页名）→ 内容锚点（注册表/文档清单）
+            # → LLM 指代消解（当前页清单选择题）→ 都抽不出给 chips，不猜目标
+            tgt_view = _extract_view(text)
+            hit = _extract_anchor(text, kb_docs)
+            if hit is None and tgt_view is None:
+                hit = _llm_pick_anchor(text, view, llm)
+            if hit:
+                params["view"] = tgt_view or hit["view"]
+                params["anchor"] = hit["anchor"]
+                params["anchor_title"] = hit["title"]
+            elif tgt_view:
+                params["view"] = tgt_view
+            else:
+                # 当前页内容 chips 在前（指代候选）、五个页面在后——不猜，让用户点
+                content_opts = ([{"label": t["title"], "view": t["view"],
+                                  "anchor": t["anchor"]}
+                                 for t in targets_for_view(view)] if view else [])
+                page_opts = [{"label": n, "view": v}
+                             for n, v in
+                             [("成本看板", "dashboard"), ("对标分析", "benchmark"),
+                              ("整改追踪", "rectify"), ("报告中心", "reports"),
+                              ("知识库", "kb")]]
                 return {**base, "action": None, "params": params,
-                        "clarification": "请问要打开哪个页面？",
-                        "options": [{"label": n, "view": v}
-                                    for n, v in
-                                    [("成本看板", "dashboard"), ("对标分析", "benchmark"),
-                                     ("整改追踪", "rectify"), ("报告中心", "reports"),
-                                     ("知识库", "kb")]],
+                        "clarification": "请问要打开哪个页面或哪块内容？",
+                        "options": content_opts + page_opts,
                         "result": None}
-            params["view"] = view
         else:
             # 季度主题月份由 quarter 推导（季末月锚点），不强制用户报月份
             missing = [k for k in ("product", "month") if k not in params]
@@ -259,7 +348,8 @@ def route(text: str, pipeline: Pipeline, llm=None, latest_month: str = "2026-06"
     ctx = AnalysisContext(product=product or "", month=month or "", params=params)
     result = pipeline.run(intent, ctx)
     # 执行成功才挂联动动作（跳转/筛选写入由前端执行，路由只分发）
-    action = _make_action(intent, product, month, params.get("view")) \
+    action = _make_action(intent, product, month, params.get("view"),
+                          params.get("anchor"), params.get("anchor_title")) \
         if result.get("ok") else None
     return {**base, "action": action, "params": params, "clarification": None,
             "options": None, "result": result}
