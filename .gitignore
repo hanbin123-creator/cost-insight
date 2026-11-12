@@ -17,3 +17,6 @@ docs/e2e/
 # 官方报告模板属赛题保密资源，不入库（Docker 由 entrypoint 从数据源复制）
 assets/report_template.docx
 data/token_usage.jsonl
+
+# 数据飞轮沉淀语料（赛题数据派生，评测证据本地保留，不进公开仓库）
+data/flywheel/

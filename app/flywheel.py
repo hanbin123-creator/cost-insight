@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from . import config as C
 from . import storage
@@ -64,12 +65,35 @@ def _harvested_ids(conn) -> set[str]:
     return set(df["task_id"]) if not df.empty else set()
 
 
+def _fetch_detail(task_id: str) -> dict | None:
+    """向 RPA 侧拉取单任务全字段详情（列表接口是精简视图，缺 source/finding）。
+    不可达返回 None——记录按现有字段如实沉淀，不阻塞主链路。"""
+    import httpx
+    try:
+        r = httpx.get(f"{C.RPA_BASE_URL}/api/rpa/tasks/{task_id}", timeout=C.RPA_TIMEOUT)
+        if r.status_code == 200:
+            return r.json().get("data")
+    except Exception:
+        pass
+    return None
+
+
+def _needs_detail(task: dict) -> bool:
+    """精简视图判定：source 缺失或不是完整 dict 时需要补详情。"""
+    src = task.get("source")
+    return not isinstance(src, dict) or "finding" not in src
+
+
 def harvest(tasks: list[dict], db_path=None,
-            doc_path: Path = C.FLYWHEEL_DOC) -> list[dict]:
+            doc_path: Path = C.FLYWHEEL_DOC,
+            fetch_detail: Callable[[str], dict | None] | None = _fetch_detail
+            ) -> list[dict]:
     """从追踪任务中沉淀新确认的经验。返回本次新沉淀的任务列表（空列表=无新增）。
 
     幂等：已沉淀过的 task_id 直接跳过；状态未达 confirmed 的任务不沉淀
-    （sent/received 只是送达回执，还没有"处理结果"可言）。"""
+    （sent/received 只是送达回执，还没有"处理结果"可言）。
+    字段补全：列表视图为精简字段时，逐条拉详情接口补全 source/assignee——
+    沉淀进知识库的必须是完整记录，"异常发现: ?"的残记录不如不沉淀。"""
     fresh = [t for t in tasks
              if t.get("status") in _CONFIRMED_STATUSES and t.get("task_id")]
     if not fresh:
@@ -80,6 +104,9 @@ def harvest(tasks: list[dict], db_path=None,
         new = [t for t in fresh if t["task_id"] not in done]
         if not new:
             return []
+        if fetch_detail is not None:
+            new = [(fetch_detail(t["task_id"]) if _needs_detail(t) else None) or t
+                   for t in new]
         doc_path.parent.mkdir(parents=True, exist_ok=True)
         with doc_path.open("a", encoding="utf-8") as f:
             for t in new:

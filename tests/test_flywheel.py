@@ -26,6 +26,25 @@ def test_record_text_tolerates_flat_fields():
     assert "采购部" in text and "金银花行情价累计+12%" in text
 
 
+def test_harvest_enriches_compact_view(tmp_path):
+    """精简视图补全：列表字段残缺时拉详情接口，沉淀完整记录；
+    详情不可达（fetch 返回 None）按现有字段如实沉淀，不崩。"""
+    doc = tmp_path / "经验.txt"
+    compact = {"task_id": "TASK-C1", "status": "confirmed",
+               "task_title": "核查金银花异常", "assignee": "张伟(采购部)",
+               "priority": "high"}
+    full = {**_TASK, "task_id": "TASK-C1"}
+    got = flywheel.harvest([compact], db_path=tmp_path / "t.db", doc_path=doc,
+                           fetch_detail=lambda tid: full)
+    assert got[0]["source"]["finding"] == "金银花行情价累计+12%"
+    assert "金银花行情价累计+12%" in doc.read_text(encoding="utf-8")
+    # 详情不可达：残字段如实沉淀，不阻塞
+    got2 = flywheel.harvest([{**compact, "task_id": "TASK-C2"}],
+                            db_path=tmp_path / "t.db", doc_path=doc,
+                            fetch_detail=lambda tid: None)
+    assert len(got2) == 1 and got2[0]["task_id"] == "TASK-C2"
+
+
 def test_harvest_idempotent(tmp_path):
     """幂等：同一任务重复追踪只沉淀一次，第二次 harvest 返回空。"""
     doc = tmp_path / "经验.txt"
