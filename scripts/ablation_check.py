@@ -1,6 +1,6 @@
 """消融实验（A4）：逐路关闭召回通道，量化四路贡献（MRR / Top1 对比表）。
 
-口径：与 eval_retrieval.py 同一评估集（16 条域内断言），逐路关闭
+口径：与 eval_retrieval.py 同一评估集（40 条域内断言），逐路关闭
 vector / bm25 / graph / exact，对照全开基线。输出直接进评测报告附录。
 
 用法：python scripts/ablation_check.py
