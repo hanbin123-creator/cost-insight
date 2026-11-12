@@ -1,9 +1,9 @@
 """模块2 E2E 浏览器实测（单命令全包，零残留）。
 
 流程：起 uvicorn(8000) + vite dev(7100) → 等端口就绪 →
-headless Edge 打开看板 → 等待四图 canvas 渲染 → 断言首屏要素 →
-点击「生成归因分析」验证 503→演示模式兜底 → 切换产品验证刷新 →
-截图存证 → finally 杀掉全部子进程。
+headless Edge 打开看板 → 等待图表 canvas 渲染 → 断言首屏要素 →
+点击「生成归因分析」验证生成闭环（已配 LLM 走真实生成 / 未配走 503→演示兜底） →
+切换产品验证刷新 → 截图存证 → finally 杀掉全部子进程。
 
 用法：python scripts/e2e_browser_check.py
 退出码 0 = 全部断言通过；1 = 有失败项（明细打印在 stdout）。
@@ -101,20 +101,23 @@ def main() -> int:
 
             page.goto(f"http://localhost:{WEB_PORT}/", wait_until="domcontentloaded", timeout=30000)
 
-            # 1. 四张图表卡片挂载
+            # 1. 四张图表面板挂载（主从布局：趋势 + 侧列结构/瀑布 + 全宽热力表，
+            #    侧列两张嵌在 .area-side 内，故用后代选择器而非子选择器）
             def _cards():
                 page.wait_for_function(
-                    "document.querySelectorAll('.grid > .panel').length === 4",
+                    "document.querySelectorAll('.grid .panel').length === 4",
                     timeout=30000)
-                return "4 张卡片已挂载"
-            check("四张图表卡片", _cards)
+                return "4 张面板已挂载"
+            check("四张图表面板", _cards)
 
-            # 2. ECharts 实际绘制出 canvas（非空 option 才会生成）
+            # 2. ECharts 实际绘制出 canvas（趋势/结构/瀑布 3 张；热力图为表格式无 canvas，
+            #    单独断言其表格已渲染）
             def _canvas():
                 page.wait_for_function(
-                    "document.querySelectorAll('.grid .panel canvas').length >= 4",
+                    "document.querySelectorAll('.grid .panel canvas').length >= 3",
                     timeout=30000)
-                return "≥4 个 canvas 已绘制"
+                page.wait_for_selector(".heat-panel table", timeout=15000)
+                return "3 个 canvas 已绘制 + 热力表已渲染"
             check("ECharts canvas 渲染", _canvas)
 
             # 3. 产品/月份下拉装载了真实数据（数据包共 3 个产品）
@@ -135,23 +138,28 @@ def main() -> int:
                 return txt.strip()[:90]
             check("Agent 决策横幅", _decision)
 
-            # 5. 告警面板（2026-05 银黄口服液环比超阈值应有告警）
+            # 5. 告警行动卡（2026-05 银黄口服液环比超阈值应有告警）
             def _alerts():
-                page.wait_for_selector(".alerts", timeout=15000)
-                txt = page.inner_text(".alerts")
+                page.wait_for_selector(".alert-cards .acard", timeout=15000)
+                txt = page.inner_text(".alert-cards")
                 return txt.strip()[:90]
-            check("波动告警面板", _alerts)
+            check("波动告警行动卡", _alerts)
 
-            # 6. 点击「生成归因分析」→ LLM 未配置 503 → 演示模式兜底
+            # 6. 点击「生成归因分析」→ 两种合法路径都验收：
+            #    本机 .env 配了 LLM → 真实生成（慢，数十秒）出 badge；
+            #    未配置 → 503 → 演示模式兜底出 .demo-tag
             def _demo():
-                page.click(".controls button")
-                page.wait_for_selector(".demo-tag", timeout=20000)
-                badge = page.inner_text(".attribution-panel .badge, .panel .badge")
-                summary = page.inner_text(".summary")
+                page.click(".gen-bar button")
+                page.wait_for_selector("#attr-panel .badge, #attr-panel .demo-tag",
+                                       timeout=150000)
+                demo = page.query_selector("#attr-panel .demo-tag") is not None
+                badge = page.inner_text("#attr-panel .badge")
+                summary = page.inner_text("#attr-panel .summary")
                 assert "校验通过" in badge or "自动补全" in badge, f"badge 异常: {badge}"
                 assert len(summary) > 10, "归因摘要为空"
-                return f"demo 标注出现, badge={badge.strip()}, 摘要 {len(summary)} 字"
-            check("归因演示模式兜底", _demo)
+                mode = "演示兜底" if demo else "真实 LLM 生成"
+                return f"{mode}, badge={badge.strip()}, 摘要 {len(summary)} 字"
+            check("归因生成双路径", _demo)
 
             # 7. 首屏稳定态：所有加载占位消失 + 每个图表 canvas 有实际图形像素
             #    （首次实测发现：canvas 存在≠图形已绘制，切换中间态会抓到空坐标轴）
@@ -170,10 +178,10 @@ def main() -> int:
                     }
                     return n;
                 })""")
-                assert len(stats) >= 4, f"canvas 数不足: {len(stats)}"
-                # 坐标轴本身约几百像素；真实图形（线/柱/饼/色块）应远超
-                assert all(s > 800 for s in stats[:4]), f"有图表只有坐标轴无图形: {stats}"
-                return f"4 图像素量 {stats}"
+                assert len(stats) >= 3, f"canvas 数不足: {len(stats)}"
+                # 坐标轴本身约几百像素；真实图形（线/柱/饼）应远超
+                assert all(s > 800 for s in stats[:3]), f"有图表只有坐标轴无图形: {stats}"
+                return f"3 图像素量 {stats[:3]}"
             check("图形像素实质渲染", _stable_pixels)
 
             # 8. 首屏（银黄口服液 2026-05）稳定态截图
@@ -217,10 +225,12 @@ def main() -> int:
             for r in unexpected:
                 print(" ", r)
             ok_all = False
-        # console 错误：排除由预期 404/503 引起的 resource 加载提示
+        # console 错误：排除由预期 404/503 引起的 resource 加载提示，
+        # 以及 vite dev HMR 的 WebSocket 重连噪音（仅开发服务器行为，与产品代码无关）
         real_console_errors = [
             e for e in console_errors
             if "Failed to load resource" not in e
+            and not (e.startswith("WebSocket connection") and "localhost" in e)
         ]
         if real_console_errors:
             print("\n=== 浏览器 console 错误 ===")
