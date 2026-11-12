@@ -100,7 +100,13 @@ RPA_ROSTER_PATH = ROOT / "config" / "rpa_assignees.yaml"   # 责任人名册（�
 INTENT_CONFIDENCE_THRESHOLD = 0.7      # 低于此置信度 → 四入口卡片让用户选（不猜）
 INTENT_LLM_TIMEOUT = 30.0              # 意图分类小模型超时（秒）
 # qa 意图"不硬答"阈值：RRF top1 低于此分 → 如实回"知识库未收录"。
-# 2026-11-12 按 50 条评估集（40 域内 + 10 域外）重新校准：域内下限 0.0313 /
+# 2026-11-12 按 50 条评估集（40 域内 + 10 域外）+ 神经精排上线后口径校准：
+# 精排会把 RRF 低名次的正确块顶到 top1（其 rrf_score 不变），域内下限 0.0297 /
 # 域外上限 0.0325，分布重叠——单一分数阈值不可分，本阈值取域内下限之下，
-# 只挡"明显无关"（0.016 档）查询；域内外边界由意图层分类把守（主防线）。
-QA_MIN_RRF_SCORE = 0.0312
+# 只挡"明显无关"（0.016 档）查询（实测拦下 8/10）；域内外边界由意图层分类把守（主防线）。
+QA_MIN_RRF_SCORE = 0.0290
+
+# ---- 神经精排（可选增强，2026-11-12）----
+# bge-reranker-base ONNX（约 1GB，不入 git）；目录缺文件时自动回退规则精排。
+NEURAL_RERANK_ENABLED = True
+NEURAL_RERANK_DIR = ROOT / "models" / "reranker" / "base"

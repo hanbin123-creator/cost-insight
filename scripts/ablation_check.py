@@ -3,7 +3,7 @@
 口径：与 eval_retrieval.py 同一评估集（40 条域内断言），逐路关闭
 vector / bm25 / graph / exact，对照全开基线。输出直接进评测报告附录。
 
-用法：python scripts/ablation_check.py
+用法：python scripts/ablation_check.py [--only 0,1,2]（--only 只跑指定序号配置，便于分段复跑）
 """
 from __future__ import annotations
 
@@ -22,10 +22,15 @@ _CONFIGS = [("全开（基线）", ALL_CHANNELS)] + [
 
 def main() -> int:
     r = _get_retriever()
+    configs = _CONFIGS
+    if "--only" in sys.argv:                      # 分段复跑：--only 0,2 只跑指定配置
+        idx = [int(x) for x in sys.argv[sys.argv.index("--only") + 1].split(",")]
+        configs = [_CONFIGS[i] for i in idx]
     rows = []
-    for label, channels in _CONFIGS:
+    for label, channels in configs:
         res = run_eval(r, EVAL_CASES, channels=channels)
         rows.append((label, res))
+        print(f"  完成 {label}: MRR={res['mrr']:.4f} Top1={res['top1']}/{res['n']}", flush=True)
     base = rows[0][1]
     print(f"消融实验（评估集 {base['n']} 条，rerank 开启，Top5 命中口径）\n")
     print(f"{'配置':<14}{'MRR':>8}{'Top1':>8}{'Top5':>8}{'ΔMRR':>9}")

@@ -160,11 +160,17 @@ class Retriever:
                              channels=channels[i])
                 for i, score in top]
         if rerank:
-            # 规则精排（rerank.py）：只重排前窗不扩召回，错误代价封顶；
+            # 神经精排优先（neural_rerank.py，bge-reranker-base，可选增强）；
+            # 模型缺失/失败返回 None → 回退规则精排（rerank.py），行为与旧版一致。
+            # 两者同一职责边界：只重排前窗不扩召回，错误代价封顶；
             # IDF 取自 BM25 通道（同分词器，量纲天然对齐）
-            from .rerank import rerank_hits
-            hits = rerank_hits(query, _tokenize(query), hits, self.graph,
-                               idf=self.bm25.idf)[:top_k]
+            from .neural_rerank import neural_rerank_hits
+            reranked = neural_rerank_hits(query, hits)
+            if reranked is None:
+                from .rerank import rerank_hits
+                reranked = rerank_hits(query, _tokenize(query), hits, self.graph,
+                                       idf=self.bm25.idf)
+            hits = reranked[:top_k]
         return KnowledgePack(query=query, hits=hits)
 
     def multi_search(self, queries: list[str], top_k: int = 6,

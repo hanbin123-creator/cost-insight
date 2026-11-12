@@ -91,9 +91,15 @@ def test_radical_map_completeness():
 
 
 def test_d13_generic_query_prefers_business_doc(retriever):
-    """D13 回归：泛查询 Top1 应为业务文档（配方/工艺），而非 GMP 通则类泛文档。"""
+    """D13 回归：泛查询 Top1 应为业务文档（配方/工艺/飞轮整改记录），而非 GMP 通则类泛文档。
+
+    2026-11-12 口径更新：神经精排上线后，"金银花价格上涨的原因" Top1 命中
+    数据飞轮_整改经验记录（该文档直接记录了金银花 +10.4% 超阈值事件与整改建议，
+    是一等业务证据，恰是飞轮价值的体现）；D13 的防护目标保持不变——
+    Top1 不得是 GMP 通则类泛文档。
+    """
     pack = retriever.search("金银花价格上涨的原因", top_k=3)
-    assert pack.hits[0].doc_type in ("formula", "process"), \
+    assert pack.hits[0].doc_type in ("formula", "process", "history_record"), \
         f"Top1 仍是泛文档: {pack.hits[0].doc_name}"
 
 

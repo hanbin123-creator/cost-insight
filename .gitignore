@@ -20,3 +20,6 @@ data/token_usage.jsonl
 
 # 数据飞轮沉淀语料（赛题数据派生，评测证据本地保留，不进公开仓库）
 data/flywheel/
+
+# 神经精排模型（约 1GB，可选增强；获取方式见 README「可选神经精排」）
+models/reranker/

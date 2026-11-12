@@ -64,9 +64,23 @@ FastAPI/Pandas/Vue/ECharts 等依赖）的来源与许可证见 [NOTICE.md](NOTI
 
 ## 测试与质量
 
-- 后端 **209 项 pytest**（计算对账误差 0、路由仲裁边界、schema 闸、幂等核实、Agent 六意图）：`pytest tests/`
+- 后端 **213 项 pytest**（计算对账误差 0、路由仲裁边界、schema 闸、幂等核实、Agent 六意图、神经精排回退）：`pytest tests/`
 - 前端 **76 项 vitest**（视图模型纯函数）：`cd web && npm run test`
 - 断网韧性：LLM/RPA 缺席自动降级且如实标注，服务不炸（CI 冒烟环境即无 LLM 密钥，顺带验证此路径）
+
+## 可选神经精排（bge-reranker-base）
+
+检索默认为"四通道混合召回 + 规则精排"（零外部模型依赖，Docker/CI 开箱即用）。
+本地可加装 **bge-reranker-base** cross-encoder 神经精排（50 条评估集实测：
+Top1 87.5%→90.0%、MRR 0.9187→0.9342；对照脚本 `scripts/rerank_compare.py`）：
+
+```bash
+# 模型约 1GB，不入 git；从 ModelScope 获取两个文件放入 models/reranker/base/
+curl -L -o models/reranker/base/model.onnx "https://modelscope.cn/models/BAAI/bge-reranker-base/resolve/master/onnx/model.onnx"
+curl -L -o models/reranker/base/tokenizer.json "https://modelscope.cn/models/BAAI/bge-reranker-base/resolve/master/tokenizer.json"
+```
+
+文件就位后检索自动走神经精排；缺失或加载失败自动回退规则精排，接口与行为不变。
 
 ## 目录速览
 
