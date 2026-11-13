@@ -85,9 +85,11 @@ curl -L -o models/reranker/base/tokenizer.json "https://modelscope.cn/models/BAA
 ## 可选本地小模型（Qwen3.5-9B · llama.cpp · CPU）
 
 Agent 意图分类/润色角色（`LLMClient(role="classification"/"polish")`）优先读
-`LLM_SMALL_*` 三件套，可指向本地 llama-server 跑 **Qwen3.5-9B**——
-模糊语义路由实测 **26/26 = 100%**（纯规则兜底 73.1%，DeepSeek 主模型 100%），
-单次分类约 3.5-4s（8 核 CPU、UD-Q2_K_XL 量化）：
+`LLM_SMALL_*` 三件套，可指向本地 llama-server 跑 **Qwen3.5-9B**。
+原 26 条模糊语义题两模型均 100%；另行新增 104 条未参与调参的留出题后，
+130 条严格评估（含跳转目标与参数对账）实测：**本地 9B 107/130 = 82.3%，
+DeepSeek 119/130 = 91.5%**——不再把原测试集的 100% 外推为泛化能力。
+小模型单次分类常见约 3.5-4s（8 核 CPU、UD-Q2_K_XL 量化）：
 
 ```bat
 REM 推理引擎与模型不入 git（合计约 4GB），目录约定为仓库平级 ..\_small_model
@@ -104,7 +106,8 @@ scripts\start_small_model.cmd
 
 服务未启动时分类调用失败 → 路由规则层兜底（三层架构第 2 层），平台照常可用；
 `LLM_SMALL_*` 留空则回退主模型（`role_actual` 如实标注 `main-model-fallback`）。
-评估复跑：`python scripts/agent_fuzzy_eval.py`（双模式对照 `--no-llm`）。
+评估复跑：`python scripts/agent_fuzzy_eval.py --extended`（不加 `--extended`
+则仅跑原 26 条；`--no-llm` 为规则对照；分组失败分析见开发日志 38）。
 
 ## 目录速览
 

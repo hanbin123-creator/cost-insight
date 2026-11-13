@@ -4,11 +4,13 @@
 "不像指令的人话"能不能正确路由。
 
 用法：
-  python scripts/agent_fuzzy_eval.py            # LLM 主线实弹
-  python scripts/agent_fuzzy_eval.py --no-llm   # 纯规则兜底对照组（量化 LLM/小模型增量价值）
+  python scripts/agent_fuzzy_eval.py             # 原 26 条，LLM 主线实弹
+  python scripts/agent_fuzzy_eval.py --no-llm    # 纯规则兜底对照组
+  python scripts/agent_fuzzy_eval.py --extended  # 原 26 + 104 条留出题，共 130 条
 
 判定口径（路由正确性 ≠ 场景执行成功）：
 - pass = 意图命中 + 行为类别符合预期（exec/clarify/nav-any/out）
+- 扩展题若声明 expect_params，还必须通过 view/anchor/product/month 逐项对账
 - result.ok 另记为执行信息，不因外部服务（如 RPA mock）可用性误判路由
 
 输出 docs/_fuzzy_eval/fuzzy_eval_<mode>_<timestamp>.json + 控制台汇总表。
@@ -104,7 +106,17 @@ def _behavior(out: dict) -> str:
     return "other"
 
 
+def _param_mismatch(case: dict, out: dict) -> dict:
+    """扩展集的严格目标校验：view/anchor/product/month 逐项对账。"""
+    actual = out.get("params") or {}
+    return {k: {"expect": v, "actual": actual.get(k)}
+            for k, v in (case.get("expect_params") or {}).items()
+            if actual.get(k) != v}
+
+
 def _pass(case: dict, out: dict, beh: str, use_llm: bool) -> bool:
+    if _param_mismatch(case, out):
+        return False
     exp = case["expect"]
     if exp == "nav-any":
         return out["intent"] == "nav" and beh in ("exec", "clarify")
@@ -124,8 +136,13 @@ def _arg_int(name: str, default: int) -> int:
 
 def main() -> int:
     use_llm = "--no-llm" not in sys.argv
-    mode = "llm" if use_llm else "rule-only"
-    lo, hi = _arg_int("--from", 1), _arg_int("--to", len(CASES))
+    extended = "--extended" in sys.argv
+    cases = CASES
+    if extended:
+        from agent_fuzzy_extended_cases import EXTRA_CASES
+        cases = CASES + EXTRA_CASES       # 104 条留出题；原 26 条顺序保持不变
+    mode = ("extended-" if extended else "") + ("llm" if use_llm else "rule-only")
+    lo, hi = _arg_int("--from", 1), _arg_int("--to", len(cases))
     store, _ = init_store()
     calc = CostCalculator(store)
     out_dir = Path("docs/_fuzzy_eval")
@@ -143,7 +160,7 @@ def main() -> int:
 
     rows = []
     jsonl = out_dir / f"fuzzy_rows_{mode}.jsonl"   # 增量落盘：超时中断不丢已完成行
-    for i, case in enumerate(CASES, 1):
+    for i, case in enumerate(cases, 1):
         if not (lo <= i <= hi):
             continue
         t0 = time.perf_counter()
@@ -151,27 +168,30 @@ def main() -> int:
                     view=case.get("view"), kb_docs=KB_DOCS)
         ms = round((time.perf_counter() - t0) * 1000)
         beh = _behavior(out)
+        mismatch = _param_mismatch(case, out)
         ok = _pass(case, out, beh, use_llm)
         r = out.get("result") or {}
         rows.append({
             "no": i, "group": case["group"], "text": case["text"],
             "expect_intent": case.get("intent"), "expect": case["expect"],
+            "expect_params": case.get("expect_params"),
             "intent": out["intent"], "confidence": out["confidence"],
             "layer": out["layer"], "classifier": out.get("classifier"),
-            "behavior": beh, "pass": ok, "latency_ms": ms,
-            "params": out.get("params"), "exec_ok": r.get("ok"),
+            "behavior": beh, "pass": ok, "param_mismatch": mismatch,
+            "latency_ms": ms, "params": out.get("params"), "exec_ok": r.get("ok"),
             "anchor": (out.get("params") or {}).get("anchor"),
         })
         mark = "PASS" if ok else "FAIL"
         print(f"[{mark}] {i:02d} {case['group']} | {case['text']!r} → "
               f"intent={out['intent']} layer={out['layer']} beh={beh} "
-              f"conf={out['confidence']} {ms}ms", flush=True)
+              f"conf={out['confidence']} {ms}ms"
+              + (f" mismatch={mismatch}" if mismatch else ""), flush=True)
         with jsonl.open("a", encoding="utf-8") as fp:   # 逐行落盘，中断可续
             fp.write(json.dumps(rows[-1], ensure_ascii=False) + "\n")
 
     total = len(rows)
     passed = sum(1 for r in rows if r["pass"])
-    span = f"（分段 {lo}-{hi}）" if (lo, hi) != (1, len(CASES)) else ""
+    span = f"（分段 {lo}-{hi}）" if (lo, hi) != (1, len(cases)) else ""
     print(f"\n===== {mode} 汇总{span}：{passed}/{total} = {passed / total:.1%} =====")
     groups: dict[str, list[bool]] = {}
     for r in rows:
@@ -187,10 +207,11 @@ def main() -> int:
         print(f"  延迟: avg={sum(lat) // len(lat)}ms max={max(lat)}ms")
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    suffix = f"_r{lo}-{hi}" if (lo, hi) != (1, len(CASES)) else ""
+    suffix = f"_r{lo}-{hi}" if (lo, hi) != (1, len(cases)) else ""
     path = out_dir / f"fuzzy_eval_{mode}_{ts}{suffix}.json"
     path.write_text(json.dumps({
         "mode": mode, "ts": ts, "latest_month": LATEST,
+        "suite_size": len(cases), "held_out_cases": 104 if extended else 0,
         "classifier": rows[0]["classifier"] if rows else None,
         "pass": passed, "total": total, "rate": round(passed / total, 4),
         "groups": {g: f"{sum(ps)}/{len(ps)}" for g, ps in groups.items()},
