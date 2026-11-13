@@ -114,9 +114,18 @@ def _pass(case: dict, out: dict, beh: str, use_llm: bool) -> bool:
     return out["intent"] == case["intent"] and beh == exp
 
 
+def _arg_int(name: str, default: int) -> int:
+    """--from/--to 分段参数（1 起含端点）：本地小模型评估慢，支持分段前台跑。"""
+    for i, a in enumerate(sys.argv):
+        if a == name and i + 1 < len(sys.argv):
+            return int(sys.argv[i + 1])
+    return default
+
+
 def main() -> int:
     use_llm = "--no-llm" not in sys.argv
     mode = "llm" if use_llm else "rule-only"
+    lo, hi = _arg_int("--from", 1), _arg_int("--to", len(CASES))
     store, _ = init_store()
     calc = CostCalculator(store)
     out_dir = Path("docs/_fuzzy_eval")
@@ -126,10 +135,17 @@ def main() -> int:
     if use_llm:
         from app.llm import LLMClient
         llm = LLMClient(role="classification")
-        print(f"classifier role_actual = {llm.role_actual}  model = {llm.model}")
+        # 本地 CPU 小模型单次推理可达 20-40s：评估期放宽超时（角色档案 30s 面向云端）
+        if llm.role_actual == "small-model":
+            llm.timeout = 180.0
+        print(f"classifier role_actual = {llm.role_actual}  model = {llm.model}"
+              f"  timeout = {llm.timeout}", flush=True)
 
     rows = []
+    jsonl = out_dir / f"fuzzy_rows_{mode}.jsonl"   # 增量落盘：超时中断不丢已完成行
     for i, case in enumerate(CASES, 1):
+        if not (lo <= i <= hi):
+            continue
         t0 = time.perf_counter()
         out = route(case["text"], pipeline, llm=llm, latest_month=LATEST,
                     view=case.get("view"), kb_docs=KB_DOCS)
@@ -149,11 +165,14 @@ def main() -> int:
         mark = "PASS" if ok else "FAIL"
         print(f"[{mark}] {i:02d} {case['group']} | {case['text']!r} → "
               f"intent={out['intent']} layer={out['layer']} beh={beh} "
-              f"conf={out['confidence']} {ms}ms")
+              f"conf={out['confidence']} {ms}ms", flush=True)
+        with jsonl.open("a", encoding="utf-8") as fp:   # 逐行落盘，中断可续
+            fp.write(json.dumps(rows[-1], ensure_ascii=False) + "\n")
 
     total = len(rows)
     passed = sum(1 for r in rows if r["pass"])
-    print(f"\n===== {mode} 汇总：{passed}/{total} = {passed / total:.1%} =====")
+    span = f"（分段 {lo}-{hi}）" if (lo, hi) != (1, len(CASES)) else ""
+    print(f"\n===== {mode} 汇总{span}：{passed}/{total} = {passed / total:.1%} =====")
     groups: dict[str, list[bool]] = {}
     for r in rows:
         groups.setdefault(r["group"], []).append(r["pass"])
@@ -168,7 +187,8 @@ def main() -> int:
         print(f"  延迟: avg={sum(lat) // len(lat)}ms max={max(lat)}ms")
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = out_dir / f"fuzzy_eval_{mode}_{ts}.json"
+    suffix = f"_r{lo}-{hi}" if (lo, hi) != (1, len(CASES)) else ""
+    path = out_dir / f"fuzzy_eval_{mode}_{ts}{suffix}.json"
     path.write_text(json.dumps({
         "mode": mode, "ts": ts, "latest_month": LATEST,
         "classifier": rows[0]["classifier"] if rows else None,

@@ -82,6 +82,30 @@ curl -L -o models/reranker/base/tokenizer.json "https://modelscope.cn/models/BAA
 
 文件就位后检索自动走神经精排；缺失或加载失败自动回退规则精排，接口与行为不变。
 
+## 可选本地小模型（Qwen3.5-9B · llama.cpp · CPU）
+
+Agent 意图分类/润色角色（`LLMClient(role="classification"/"polish")`）优先读
+`LLM_SMALL_*` 三件套，可指向本地 llama-server 跑 **Qwen3.5-9B**——
+模糊语义路由实测 **26/26 = 100%**（纯规则兜底 73.1%，DeepSeek 主模型 100%），
+单次分类约 3.5-4s（8 核 CPU、UD-Q2_K_XL 量化）：
+
+```bat
+REM 推理引擎与模型不入 git（合计约 4GB），目录约定为仓库平级 ..\_small_model
+REM 1) llama.cpp Windows CPU 发行包（约 25MB）解压到 _small_model\llama-bin
+REM    https://github.com/ggml-org/llama.cpp/releases （llama-*-bin-win-cpu-x64.zip）
+REM 2) 模型（约 3.8GB）放入 _small_model
+curl -L -o ..\_small_model\qwen35-9b-q2.gguf "https://hf-mirror.com/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-UD-Q2_K_XL.gguf"
+REM 3) .env 写入三件套后，一键启动（脚本内置关闭思考模式参数）：
+REM    LLM_SMALL_BASE_URL=http://127.0.0.1:8001/v1
+REM    LLM_SMALL_API_KEY=local-no-key
+REM    LLM_SMALL_MODEL=qwen3.5-9b-local
+scripts\start_small_model.cmd
+```
+
+服务未启动时分类调用失败 → 路由规则层兜底（三层架构第 2 层），平台照常可用；
+`LLM_SMALL_*` 留空则回退主模型（`role_actual` 如实标注 `main-model-fallback`）。
+评估复跑：`python scripts/agent_fuzzy_eval.py`（双模式对照 `--no-llm`）。
+
 ## 目录速览
 
 ```
